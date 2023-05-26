@@ -1,0 +1,52 @@
+{
+    "default": {
+        "font": {"name": "Georgia", "size": 11, "bold": false, "italic": false, "color": "000000"},
+        "fill": {"pattern": "solid", "fgColor": "FFFFFF"},
+        "alignment": {"horizontal": "center", "vertical": "center"},
+        "number_format": "General",
+        "wrap_text": false
+    },
+    "header": {
+        "font": {"name": "Georgia", "size": 12, "bold": true, "italic": false, "color": "FFFFFF"},
+        "fill": {"pattern": "solid", "fgColor": "222844"},
+        "alignment": {"horizontal": "center", "vertical": "top"},
+        "number_format": "General",
+        "wrap_text": true
+    },
+    "data": {
+        "font": {"name": "Georgia", "size": 11, "bold": false, "italic": false, "color": "000000"},
+        "fill": {"pattern": "solid", "fgColor": "FFFFFF"},
+        "alignment": {"horizontal": "left", "vertical": "top"},
+        "number_format": "#,#0.0;(#,#0.0);\u2013"
+    },
+    "dates": {
+        "font": {"name": "Georgia", "size": 11, "bold": false, "italic": false, "color": "000000"},
+        "fill": {"pattern": "solid", "fgColor": "FFFFFF"},
+        "alignment": {"horizontal": "left", "vertical": "top"},
+        "number_format": "dd/mm/yyyy;;\u2013"
+    },
+    "input": {
+        "font": {"name": "Arial", "size": 11, "bold": true, "italic": false, "color": "0000FF"},
+        "fill": {"pattern": "solid", "fgColor": "FFFFCC"},
+        "alignment": {"horizontal": "center", "vertical": "center"},
+        "number_format": "General"
+    },
+    "percents": {
+        "font": {"name": "Arial", "size": 11, "bold": false, "italic": false, "color": "000000"},
+        "fill": {"pattern": "solid", "fgColor": "FFFFFF"},
+        "alignment": {"horizontal": "left", "vertical": "top"},
+        "number_format": "0.0%;(0.0%);\u2013"
+    },
+    "title": {
+        "font": {"name": "Montserrat", "size": 24, "bold": true, "italic": false, "color": "000000"},
+        "fill": {"pattern": "solid", "fgColor": "FFFFFF"},
+        "alignment": {"horizontal": "left", "vertical": "top"},
+        "number_format": "General"
+    },
+    "subtitle": {
+        "font": {"name": "Montserrat Light", "size": 14, "bold": true, "italic": false, "color": "777777"},
+        "fill": {"pattern": "solid", "fgColor": "FFFFFF"},
+        "alignment": {"horizontal": "left", "vertical": "top"},
+        "number_format": "General"
+    }
+}
