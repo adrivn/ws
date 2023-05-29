@@ -10,14 +10,15 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.utils import get_column_letter
 from rich.console import Console
 
+# Instanciar la consola bonita
 console = Console()
 
 
-def load_cell_addresses(file):
+def load_json_config(file):
     """
-    Loads a JSON file containing cell addresses and their corresponding output labels.
+    Loads a JSON file containing external config data, like cell addresses and their corresponding output labels.
     """
-    with open(file, "r") as f:
+    with open(file, "r", encoding="utf8") as f:
         return json.load(f)
 
 
@@ -36,22 +37,63 @@ def get_files_in_directory(directory: str, name_structure: list, extensions: lis
     return [str(file) for file in uniques]
 
 
-def extract_cell_values(file, cell_addresses):
+def extract_cell_values(file, search_strings, table_columns: str, table_sheet: str = "SAP"):
     """
-    Opens an Excel file and extracts the values at specific cell addresses.
+    Opens an Excel file and converts the worksheet to a dictionary. It then looks for
+    specific strings, moves to the relative cell addresses based on both x and y offsets,
+    and extracts the value at that location. Also extracts unique values from specified
+    columns in a table on another sheet.
+    Includes the file name in the returned data.
     """
-    console.print(f"Extracting values from file {file}")
-    try:
-        workbook = openpyxl.load_workbook(file, read_only=True, data_only=True)
-        sheet = workbook.active
-        data = {label: sheet[cell].value for cell, label in cell_addresses.items()}
-        data["file_name"] = file.split("\\")[-1]
-        data["read_status"] = "Success"
-    except Exception as e:
-        console.print(f"Error when reading file {file}: {e}")
-        data = {"file_name": file.stem, "read_status": "Error"}
-    return data
+    workbook = openpyxl.load_workbook(file, read_only=True, data_only=True)
+    sheet = workbook.active
+    data = {label: None for label in search_strings.keys()}
+    data["file_name"] = os.path.basename(file)
 
+    # Convert the worksheet to a dictionary for faster searching
+    sheet_dict = {(cell.row, cell.column): cell.value for row in sheet.iter_rows() for cell in row if cell.value is not None}
+
+    for (cell_row, cell_col), cell_value in sheet_dict.items():
+        for label, [string, offset_y, offset_x] in search_strings.items():
+            if cell_value == string:
+                target_cell_address = (cell_row - offset_y, cell_col + offset_x)
+                data[label] = sheet_dict.get(target_cell_address)
+
+    # Load the JSON file for table columns and process table columns if specified
+    if table_columns and table_sheet:
+        columns_dict = load_json_config(table_columns)
+        table_sheet = workbook[table_sheet]
+        for col in columns_dict:
+            # Assume the first row contains headers
+            header_row = next(table_sheet.iter_rows(min_row=1, max_row=1, values_only=True))
+            # Get index of the target column based on header
+            try:
+                col_idx = header_row.index(col)
+            except ValueError:
+                print(f'Warning: Column header "{col}" not found in sheet. Skipping this column.')
+                continue
+            # Extract unique values from the column
+            column_values = [cell[col_idx] if not isinstance(cell[col_idx], str) or not cell[col_idx].isdigit() else int(cell[col_idx].lstrip("0")) for cell in table_sheet.iter_rows(min_row=2, values_only=True)]
+            unique_values = set(filter(None, column_values)) # Remove duplicates by converting to a set, after filtering out the null values
+            # If there's only one unique value, unpack it from the set
+            if len(unique_values) == 1:
+                unique_values = unique_values.pop()
+                if isinstance(unique_values, str) and unique_values.isdigit():
+                    unique_values = int(unique_values.lstrip('0'))  # Remove leading zeros for numeric strings
+            else:
+                # Convert to list and sort to make output more predictable
+                unique_values = sorted(unique_values)
+            # Add the unique values to the output
+            data[columns_dict.get(col)] = unique_values if unique_values else None
+
+    # Cleanup of bad data or strings
+    for label, value in data.items():
+        if label == "contract_deposit" and value == "-":
+            data[label] = 0
+        elif label == "client_description" and value == "NOMBRE":
+            data[label] = None
+
+    return data
 
 
 def create_style(json_file):
@@ -136,6 +178,8 @@ def write_output(output_file, sheet_name, dataframe, style_specs, style_ranges, 
     """
     Writes the data to an output Excel workbook.
     """
+    print("Printing input data:", dataframe, sep="\n\n")
+    dataframe.to_clipboard()
     workbook = openpyxl.Workbook()
     # Remove the default sheet created and add new sheets as per data keys
     default_sheet = workbook.active
@@ -152,6 +196,7 @@ def write_output(output_file, sheet_name, dataframe, style_specs, style_ranges, 
     # Writing data from dataframe to sheet starting from start_row
     for i, row in enumerate(dataframe_to_rows(dataframe, index=False, header=True), 1):
         for j, cell in enumerate(row, 1):
+            cell = str(tuple(cell)) if isinstance(cell, list) else cell
             sheet.cell(row=i + start_row - 1, column=j, value=cell)
 
     apply_styles(sheet, style_specs, style_ranges)
@@ -166,24 +211,25 @@ def main():
     name_structure = ["[!$~]*_OF_*", "[!$~][0-9]*[_ ]*"]
     extensions = [".xlsx", ".xls"]
     cell_address_file = "./const/cell_addresses.json"
+    sap_mapping_file = "./const/sap_columns_mapping.json"
     output_file = "output.xlsx"
     sheet_name = "Output Sheet"
 
     # Read the list of files ALREADY downloaded and parsed
-    files_already_read = None
+    # files_already_read = None
 
     # Extract the workbooks information one by one, then append the dictionary records to a 'data' variable
-    cell_addresses = load_cell_addresses(cell_address_file)
+    cell_addresses = load_json_config(cell_address_file)
     files = get_files_in_directory(directory, name_structure, extensions)
     console.print("Extracting cell values from files...")
-    data = [extract_cell_values(file, cell_addresses) for file in files]
+    data = [extract_cell_values(file, cell_addresses, sap_mapping_file) for file in files]
 
     # Use the 'data' variable to create a DataFrame structure which will be manipulated/modified
     console.print("Assembling offer data into a DataFrame...")
     df = pd.DataFrame(data)
     # Save the current offers data to disk
-    #console.print("Saving data to disk...")
-    #df.to_pickle(f"//EURFL01/advisors.hal/non-hudson/Coral Homes/CoralHudson/6. Stock/Parquet/#{datetime.now().strftime('%Y%m%d')}_Bundled_Offers_Data.pickle")
+    # console.print("Saving data to disk...")
+    # df.to_pickle(f"//EURFL01/advisors.hal/non-hudson/Coral Homes/CoralHudson/6. Stock/Parquet/#{datetime.now().strftime('%Y%m%d')}_Bundled_Offers_Data.pickle")
 
     # Manipulate the data
     expanded_df = df
