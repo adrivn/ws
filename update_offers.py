@@ -22,7 +22,7 @@ def load_json_config(file):
         return json.load(f)
 
 
-def get_files_in_directory(directory: str, name_structure: list, extensions: list):
+def get_files_in_directory(directory: str, name_structure: list, extensions: list, limit: int = None):
     """
     Scans a directory for files with a specific name structure and extensions and returns a list of those file paths.
     """
@@ -32,6 +32,9 @@ def get_files_in_directory(directory: str, name_structure: list, extensions: lis
     for pattern in name_structure:
         for ext in extensions:
             files.extend(dir_path.glob(f"**/{pattern}{ext}"))
+    if limit:
+        console.print("Filtering out non-valid files (Excel binary and others)")
+        files = files[:limit]
     uniques = set(files)
     console.print(f"Found a total of {len(uniques)} files in the {str(dir_path)} folder.")
     return [str(file) for file in uniques]
@@ -62,29 +65,34 @@ def extract_cell_values(file, search_strings, table_columns: str, table_sheet: s
     # Load the JSON file for table columns and process table columns if specified
     if table_columns and table_sheet:
         columns_dict = load_json_config(table_columns)
-        table_sheet = workbook[table_sheet]
-        for col in columns_dict:
-            # Assume the first row contains headers
-            header_row = next(table_sheet.iter_rows(min_row=1, max_row=1, values_only=True))
-            # Get index of the target column based on header
-            try:
-                col_idx = header_row.index(col)
-            except ValueError:
-                print(f'Warning: Column header "{col}" not found in sheet. Skipping this column.')
-                continue
-            # Extract unique values from the column
-            column_values = [cell[col_idx] if not isinstance(cell[col_idx], str) or not cell[col_idx].isdigit() else int(cell[col_idx].lstrip("0")) for cell in table_sheet.iter_rows(min_row=2, values_only=True)]
-            unique_values = set(filter(None, column_values)) # Remove duplicates by converting to a set, after filtering out the null values
-            # If there's only one unique value, unpack it from the set
-            if len(unique_values) == 1:
-                unique_values = unique_values.pop()
-                if isinstance(unique_values, str) and unique_values.isdigit():
-                    unique_values = int(unique_values.lstrip('0'))  # Remove leading zeros for numeric strings
-            else:
-                # Convert to list and sort to make output more predictable
-                unique_values = sorted(unique_values)
-            # Add the unique values to the output
-            data[columns_dict.get(col)] = unique_values if unique_values else None
+        try:
+            table_sheet = workbook[table_sheet]
+            for col in columns_dict:
+                # Assume the first row contains headers
+                header_row = next(table_sheet.iter_rows(min_row=1, max_row=1, values_only=True))
+                # Get index of the target column based on header
+                try:
+                    col_idx = header_row.index(col)
+                except ValueError:
+                    print(f'Warning: Column header "{col}" not found in sheet. Skipping this column.')
+                    continue
+                # Extract unique values from the column
+                column_values = [cell[col_idx] if not isinstance(cell[col_idx], str) or not cell[col_idx].isdigit() 
+                    else int(cell[col_idx].lstrip("0")) for cell in table_sheet.iter_rows(min_row=2, values_only=True)]
+                # Remove duplicates by converting to a set, after filtering out the null values
+                unique_values = set(filter(None, column_values))
+                # If there's only one unique value, unpack it from the set
+                if len(unique_values) == 1:
+                    unique_values = unique_values.pop()
+                    if isinstance(unique_values, str) and unique_values.isdigit():
+                        unique_values = int(unique_values.lstrip('0'))  # Remove leading zeros for numeric strings
+                else:
+                    # Convert to list and sort to make output more predictable
+                    unique_values = sorted(unique_values)
+                # Add the unique values to the output
+                data[columns_dict.get(col)] = unique_values if unique_values else None
+        except KeyError as e:
+            print(f"Error encontrado: {e}\nFichero causante: {file}")
 
     # Cleanup of bad data or strings
     for label, value in data.items():
@@ -178,8 +186,6 @@ def write_output(output_file, sheet_name, dataframe, style_specs, style_ranges, 
     """
     Writes the data to an output Excel workbook.
     """
-    print("Printing input data:", dataframe, sep="\n\n")
-    dataframe.to_clipboard()
     workbook = openpyxl.Workbook()
     # Remove the default sheet created and add new sheets as per data keys
     default_sheet = workbook.active
@@ -188,9 +194,10 @@ def write_output(output_file, sheet_name, dataframe, style_specs, style_ranges, 
 
     # Writing workbook creation date, title and description
     sheet.cell(column=1, row=1, value="Coral Homes Offers Data")
-    sheet.cell(column=1, row=2, value=datetime.now())
     sheet.cell(column=1, row=3, value="Created by ")
     sheet.cell(column=2, row=3, value=os.environ.get("USERNAME"))
+    sheet.cell(column=3, row=3, value=" on the ")
+    sheet.cell(column=4, row=3, value=datetime.now())
 
 
     # Writing data from dataframe to sheet starting from start_row
@@ -206,10 +213,11 @@ def write_output(output_file, sheet_name, dataframe, style_specs, style_ranges, 
 
 
 def main():
-    directory = "./_attachments/offer_files/"
-    # directory = "//EURFL01/advisors.hal/non-hudson/Coral Homes/CoralHudson/1. AM/8. Wholesale Channel/Ofertas recibidas SVH"
+    # directory = "./_attachments/offer_files/"
+    directory = "//EURFL01/advisors.hal/non-hudson/Coral Homes/CoralHudson/1. AM/8. Wholesale Channel/Ofertas recibidas SVH"
     name_structure = ["[!$~]*_OF_*", "[!$~][0-9]*[_ ]*"]
-    extensions = [".xlsx", ".xls"]
+    limit_files = 200
+    extensions = [".xlsx"]
     cell_address_file = "./const/cell_addresses.json"
     sap_mapping_file = "./const/sap_columns_mapping.json"
     output_file = "output.xlsx"
@@ -220,7 +228,7 @@ def main():
 
     # Extract the workbooks information one by one, then append the dictionary records to a 'data' variable
     cell_addresses = load_json_config(cell_address_file)
-    files = get_files_in_directory(directory, name_structure, extensions)
+    files = get_files_in_directory(directory, name_structure, extensions, 200)
     console.print("Extracting cell values from files...")
     data = [extract_cell_values(file, cell_addresses, sap_mapping_file) for file in files]
 
@@ -239,9 +247,9 @@ def main():
 
     # Define your custom formatting schema here
     cell_ranges = {
-        "header": [f"A{header_start}:AE{header_start}"],
+        "header": [f"A{header_start}:AR{header_start}"],
         "data": [f"C{header_start + 1}:F{header_start + no_of_files + 1}"],
-        "dates": [f"B{header_start + 1}:B{header_start + no_of_files + 1}", "A2"],
+        "dates": [f"B{header_start + 1}:B{header_start + no_of_files + 1}", "D3"],
         "input": ["B3"],
         "title": ["A1"],
         "subtitle": ["A3"],

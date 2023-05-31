@@ -2,7 +2,7 @@
     "default": {
         "font": {"name": "Georgia", "size": 11, "bold": false, "italic": false, "color": "000000"},
         "fill": {"pattern": "solid", "fgColor": "FFFFFF"},
-        "alignment": {"horizontal": "center", "vertical": "center"},
+        "alignment": {"horizontal": "left", "vertical": "center"},
         "number_format": "General",
         "wrap_text": false
     },
@@ -26,13 +26,13 @@
         "number_format": "dd/mm/yyyy;;\u2013"
     },
     "input": {
-        "font": {"name": "Arial", "size": 11, "bold": true, "italic": false, "color": "0000FF"},
+        "font": {"name": "Georgia", "size": 11, "bold": true, "italic": false, "color": "0000FF"},
         "fill": {"pattern": "solid", "fgColor": "FFFFCC"},
         "alignment": {"horizontal": "center", "vertical": "center"},
         "number_format": "General"
     },
     "percents": {
-        "font": {"name": "Arial", "size": 11, "bold": false, "italic": false, "color": "000000"},
+        "font": {"name": "Georgia", "size": 11, "bold": false, "italic": false, "color": "000000"},
         "fill": {"pattern": "solid", "fgColor": "FFFFFF"},
         "alignment": {"horizontal": "left", "vertical": "top"},
         "number_format": "0.0%;(0.0%);\u2013"
