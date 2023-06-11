@@ -1,3 +1,5 @@
+from conf.settings import DIR_INPUT_LOCAL, DIR_OUTPUT, DIR_PARQUET
+from conf.functions import unpack_single_item_lists
 from pathlib import Path
 from rich.console import Console
 import os
@@ -5,35 +7,36 @@ import duckdb
 import pandas as pd
 
 console = Console()
-
-files = [p for p in Path("C:/Users/amontes/Projects/wholesale/_attachments/pipe_files/").rglob('*') if p.suffix in [".xlsx", ".xls"]]
+files = [p for p in Path(DIR_INPUT_LOCAL / "pipe_files").rglob('*') if p.suffix in [".xlsx", ".xls"]]
 sorted_files = sorted([f for f in files], key=os.path.getmtime)
 latest_pipe_file = sorted_files[-1]
 
 console.print("Obteniendo datos externos...")
-directorio_parquets = Path(
-    "//EURFL01/advisors.hal/non-hudson/Coral Homes/CoralHudson/6. Stock/Parquet"
-).absolute()
 
 db = duckdb.connect()
-db.execute(
-    f"CREATE VIEW master_tape AS SELECT * FROM parquet_scan('{directorio_parquets}/master_tape.parquet')"
-)
-db.execute(
-    f"CREATE VIEW offers_data AS SELECT * FROM parquet_scan('{directorio_parquets}/offers.parquet')"
-)
+db.execute(f"CREATE VIEW master_tape AS SELECT * FROM parquet_scan('{DIR_PARQUET}/master_tape.parquet')")
+db.execute(f"CREATE VIEW offers_data AS SELECT * FROM parquet_scan('{DIR_PARQUET}/offers.parquet')")
+db.execute(f"CREATE VIEW sales2023 AS SELECT * FROM parquet_scan('{DIR_PARQUET}/sales2023.parquet')")
 
 console.print(f"Cargando fichero de pipe: {latest_pipe_file}")
 pipe_data = pd.read_excel(latest_pipe_file, sheet_name="PIPE")
 agg_data_offers = db.execute(
     """select o.offerid, 
-sum(m.lsev_dec19) as lsev_offer, 
-sum(m.ppa) as ppa_offer, 
-string_agg(distinct m.direccion_territorial, '|') as dts 
-from offers_data o left 
-join master_tape m
-on o.ur_current = m.ur_current
-group by all"""
+    array_agg(distinct o.ur_current::int) as unique_urs,
+    array_agg(distinct o.commercialdev::int) as commercialdev,
+    array_agg(distinct o.jointdev::int) as jointdev,
+    array_agg(distinct o.offerstatus) as offer_status,
+    max(s.saledate) as actual_sale_date, 
+    max(s.commitmentdate) as commitment_date, 
+    sum(m.lsev_dec19) as lsev_offer, 
+    sum(m.ppa) as ppa_offer, 
+    string_agg(distinct m.direccion_territorial, '|') as dts 
+    from offers_data o
+    left join master_tape m
+    on o.ur_current = m.ur_current
+    left join sales2023 s
+    on o.ur_current = s.ur_5000
+    group by all"""
 ).df()
 
 # Variables, columnas y nombres
@@ -70,6 +73,7 @@ merged = (
     .assign(
         LSEV_DELTA_COLUMN=lambda df_: df_[OFFER_PRICE_COLUMN] / df_[LSEV_COLUMN] - 1
     )
+    .pipe(lambda x: x.applymap(unpack_single_item_lists))
 )
 
 console.print("Creando strats...")
@@ -92,7 +96,7 @@ pivot_table2 = pd.pivot_table(
 )
 
 # Create a Pandas Excel writer using openpyxl as the engine
-with pd.ExcelWriter(FILENAME, engine="openpyxl") as writer:
+with pd.ExcelWriter(DIR_OUTPUT / FILENAME, engine="openpyxl") as writer:
     console.print(f"Guardando fichero Excel: {FILENAME}")
     merged.to_excel(writer, sheet_name=DATA_SHEET_NAME, index=False)
     # Write the first pivot table to an Excel file, starting at cell B3 of the 'PivotTable' sheet

@@ -22,7 +22,7 @@
     "dates": {
         "font": {"name": "Georgia", "size": 11, "bold": false, "italic": false, "color": "000000"},
         "fill": {"pattern": "solid", "fgColor": "FFFFFF"},
-        "alignment": {"horizontal": "left", "vertical": "top"},
+        "alignment": {"horizontal": "left", "vertical": "center"},
         "number_format": "dd/mm/yyyy;;\u2013"
     },
     "input": {
@@ -48,5 +48,12 @@
         "fill": {"pattern": "solid", "fgColor": "FFFFFF"},
         "alignment": {"horizontal": "left", "vertical": "top"},
         "number_format": "General"
+    },
+    "hyperlink": {
+        "font": {"name": "Georgia", "size": 11, "bold": true, "italic": false, "color": "0000FF"},
+        "fill": {"pattern": "solid", "fgColor": "FFFFFF"},
+        "alignment": {"horizontal": "left", "vertical": "center"},
+        "number_format": "General",
+        "wrap_text": false
     }
 }

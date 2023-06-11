@@ -55,12 +55,18 @@ def pgsql_to_parquet(host, database, user, password, table, output_file):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--table", required=True, help="Name of the table in the PostgreSQL database.")
-    parser.add_argument("--output", required=True, help="Path to the output .parquet file.")
+    parser.add_argument("--filename", required=False, help="Name of the output file.", default=None)
+    parser.add_argument("--path", required=False, help="Path to the output .parquet file.", default="//EURFL01/advisors.hal/non-hudson/Coral Homes/CoralHudson/6. Stock/Parquet/")
     args = parser.parse_args()
+
+    if args.filename == None:
+        actual_filename = (args.path + args.table + ".parquet")
+    else:
+        actual_filename = (args.path + args.filename + ".parquet")
 
     # Here, I'm using dummy values for host, database, user, and password.
     # Please replace them with your actual database credentials.
-    pgsql_to_parquet(host, 'postgres', user, pwd, args.table, args.output)
+    pgsql_to_parquet(host, 'postgres', user, pwd, args.table, actual_filename)
 
 
 if __name__ == "__main__":

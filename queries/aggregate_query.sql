@@ -2,6 +2,7 @@ select  case when asset_id = commercialdev then 'Promo Comercial'
             when asset_id = jointdev then 'Promo Conjunta'
             else 'Unidad Registral'
         end as tipo_agrupacion,
+        string_agg(distinct category, '|') as categories,
         (count(*) filter (where updatedcategory = 'Sold Assets') * 1.0 / count(*)) as 'percent_sold',
         (count(*) filter (where updatedcategory = 'Sale Agreed') * 1.0 / count(*)) as 'percent_committed',
         (count(*) filter (where updatedcategory = 'Remaining Stock') * 1.0 / count(*)) as 'percent_stock',
