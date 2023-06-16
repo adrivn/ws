@@ -1,43 +1,31 @@
-from conf.settings import DIR_INPUT_LOCAL, DIR_OUTPUT, DIR_PARQUET
-from conf.functions import unpack_single_item_lists
+from conf.settings import DIR_PIPE, DIR_OUTPUT
+from conf.functions import get_missing_values_by_id
 from pathlib import Path
 from rich.console import Console
 import os
+from datetime import datetime
 import duckdb
 import pandas as pd
 
 console = Console()
-files = [p for p in Path(DIR_INPUT_LOCAL / "pipe_files").rglob('*') if p.suffix in [".xlsx", ".xls"]]
+files = [p for p in DIR_PIPE.rglob("*") if p.suffix in [".xlsx", ".xls"]]
 sorted_files = sorted([f for f in files], key=os.path.getmtime)
 latest_pipe_file = sorted_files[-1]
 
 console.print("Obteniendo datos externos...")
 
-db = duckdb.connect()
-db.execute(f"CREATE VIEW master_tape AS SELECT * FROM parquet_scan('{DIR_PARQUET}/master_tape.parquet')")
-db.execute(f"CREATE VIEW offers_data AS SELECT * FROM parquet_scan('{DIR_PARQUET}/offers.parquet')")
-db.execute(f"CREATE VIEW sales2023 AS SELECT * FROM parquet_scan('{DIR_PARQUET}/sales2023.parquet')")
+db = duckdb.connect("./basedatos_wholesale.db")
 
 console.print(f"Cargando fichero de pipe: {latest_pipe_file}")
-pipe_data = pd.read_excel(latest_pipe_file, sheet_name="PIPE")
-agg_data_offers = db.execute(
-    """select o.offerid, 
-    array_agg(distinct o.ur_current::int) as unique_urs,
-    array_agg(distinct o.commercialdev::int) as commercialdev,
-    array_agg(distinct o.jointdev::int) as jointdev,
-    array_agg(distinct o.offerstatus) as offer_status,
-    max(s.saledate) as actual_sale_date, 
-    max(s.commitmentdate) as commitment_date, 
-    sum(m.lsev_dec19) as lsev_offer, 
-    sum(m.ppa) as ppa_offer, 
-    string_agg(distinct m.direccion_territorial, '|') as dts 
-    from offers_data o
-    left join master_tape m
-    on o.ur_current = m.ur_current
-    left join sales2023 s
-    on o.ur_current = s.ur_5000
-    group by all"""
-).df()
+pipe_data = pd.read_excel(latest_pipe_file, sheet_name="PIPE", skiprows=2, usecols="A:AE")
+
+console.print("Guardando tabla de pipe en base de datos...")
+db.register("pipe", pipe_data)
+
+with open("./queries/pipe_aggregates.sql", encoding="utf8") as sql_file:
+    query = sql_file.read()
+
+agg_data_offers = db.execute(query).df()
 
 # Variables, columnas y nombres
 PK_PIPE = "ID Offer"
@@ -51,7 +39,8 @@ YEAR_DEED_COLUMN = "Year Planned EP"
 QUARTER_DEED_COLUMN = "Q Planned EP"
 MONTH_SALE_COLUMN = "Month Sale EP"
 
-FILENAME = "Pandas_Pivot.xlsx"
+now_filename = datetime.strftime(datetime.now(), "%Y%m%d")
+FILENAME = f"#{now_filename}_WS_Pipeline.xlsx"
 DATA_SHEET_NAME = "Pipeline 2023"
 STRAT_SHEET_NAME = "Strats"
 
@@ -73,7 +62,6 @@ merged = (
     .assign(
         LSEV_DELTA_COLUMN=lambda df_: df_[OFFER_PRICE_COLUMN] / df_[LSEV_COLUMN] - 1
     )
-    .pipe(lambda x: x.applymap(unpack_single_item_lists))
 )
 
 console.print("Creando strats...")

@@ -5,38 +5,37 @@ import json
 import duckdb
 import pandas as pd
 import pendulum as pdl
-from datetime import datetime
+import datetime
 from pathlib import Path
 from openpyxl.styles import Font, PatternFill, Alignment, NamedStyle
 from openpyxl.utils.cell import coordinate_from_string, column_index_from_string
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.utils import get_column_letter
 from rich.console import Console
-from conf.settings import DIR_OUTPUT, DIR_PARQUET, DIR_INPUT_LOCAL
+from conf.settings import DIR_OUTPUT, DIR_INPUT_LOCAL, DIR_INPUT_REMOTE
+from conf.functions import (
+    load_json_config,
+    get_missing_values_by_id,
+    find_files_included,
+)
 
 # Instanciar la consola bonita
 console = Console()
 
 # Instanciar las variables de ficheros, carpetas y otros
-# directory = DIR_INPUT_LOCAL + "offer_files/"
-directory = "//EURFL01/advisors.hal/non-hudson/Coral Homes/CoralHudson/1. AM/8. Wholesale Channel/Ofertas recibidas SVH"
-name_structure = ["[!$~]*_OF_*", "[!$~][0-9]*[_ ]*"]
+# directory = DIR_INPUT_LOCAL / "offer_files/"
+directory = DIR_INPUT_REMOTE
+name_structure = ["[!$~][0-9]*[_ ]*"]
 limit_files = None
 extensions = [".xlsx"]
 cell_address_file = "./conf/cell_addresses.json"
 sap_mapping_file = "./conf/sap_columns_mapping.json"
-date_append_output_name = datetime.strftime(datetime.now(), "%Y%m%d")
+date_append_output_name = datetime.datetime.strftime(datetime.datetime.now(), "%Y%m%d")
 output_file = f"#{date_append_output_name}_Coral_Homes_Offers_Data.xlsx"
-sheet_name = "Output Sheet"
+sheet_name = "Offers Data"
 header_start = 5
-
-
-def load_json_config(file):
-    """
-    Loads a JSON file containing external config data, like cell addresses and their corresponding output labels.
-    """
-    with open(file, "r", encoding="utf8") as f:
-        return json.load(f)
+latest_file_name_pattern = r"\d{8}_Coral_Homes_Offers_Data.xlsx"
+split_explode_columns = ["count_urs", "sum_ppa", "sum_lsev"]
 
 
 def get_files_in_directory(
@@ -46,12 +45,14 @@ def get_files_in_directory(
     Scans a directory for files with a specific name structure and extensions and returns a list of those file paths.
     """
     dir_path = Path(directory)
-    console.print(f"Scanning folder {str(dir_path)} for offers...")
-    files = []
+    with console.status(f"Scanning folder {str(dir_path)} for offers...") as status:
+        files = []
 
-    for pattern in name_structure:
-        for ext in extensions:
-            files.extend(dir_path.glob(f"**/{pattern}{ext}"))
+        for pattern in name_structure:
+            for ext in extensions:
+                for file in list(dir_path.glob(f"**/{pattern}{ext}")):
+                    files.append(file)
+                    status.update(f"{len(files)} ficheros leídos")
 
     if limit:
         files = files[:limit]
@@ -65,7 +66,7 @@ def get_files_in_directory(
 
 
 def extract_cell_values(
-    file, search_strings, table_columns: str, table_sheet: str = "SAP"
+    file: str, search_strings: dict, columns_dict: dict, table_sheet: str = "SAP"
 ):
     """
     Opens an Excel file and converts the worksheet to a dictionary. It then looks for
@@ -75,7 +76,6 @@ def extract_cell_values(
     Includes the file name in the returned data.
     """
     try:
-        console.print(f"[ Loading data from file ] > {file}")
         workbook = openpyxl.load_workbook(file, read_only=True, data_only=True)
     except Exception as e:
         console.print(f"Error when loading file {file}. Details: {e}")
@@ -85,8 +85,24 @@ def extract_cell_values(
         data["full_path"] = os.path.abspath(file)
         data["file_name"] = os.path.basename(file)
         return data
-    sheet = workbook.active
+
     data = {label: None for label in search_strings.keys()}
+
+    try:
+        hoja_ficha = list(
+            filter(
+                lambda z: re.match("ficha", z, flags=re.IGNORECASE), workbook.sheetnames
+            )
+        )
+        hoja_ficha = hoja_ficha.pop() if hoja_ficha else "FICHA"
+        sheet = workbook[hoja_ficha]
+    except KeyError as e:
+        data["full_path"] = os.path.abspath(file)
+        data["file_name"] = os.path.basename(file)
+        data["read_status"] = "Fail"
+        data["read_details"] = e
+        return data
+
     data["full_path"] = os.path.abspath(file)
     data["file_name"] = os.path.basename(file)
     data["read_status"] = "Success"
@@ -101,32 +117,28 @@ def extract_cell_values(
     }
 
     for (cell_row, cell_col), cell_value in sheet_dict.items():
-        for label, [regex, offset_y_range, offset_x_range] in search_strings.items():
+        for label, [regex, offset_y, offset_x] in search_strings.items():
             if re.match(
                 regex, str(cell_value), re.IGNORECASE
             ):  # compare values using the regular expression
-                for offset_y in offset_y_range:
-                    for offset_x in offset_x_range:
-                        try:
-                            target_cell_address = (
-                                cell_row - offset_y,
-                                cell_col + offset_x,
-                            )
-                            target_cell_value = sheet_dict.get(target_cell_address)
-                            if target_cell_value is not None:
-                                data[label] = target_cell_value
-                                break
-                        except IndexError:
-                            continue
-                        else:
-                            break
-                    else:
-                        continue
+                try:
+                    target_cell_address = (
+                        cell_row - offset_y,
+                        cell_col + offset_x,
+                    )
+                    target_cell_value = sheet_dict.get(target_cell_address)
+                    if target_cell_value is not None:
+                        data[label] = target_cell_value
+                        break
+                except IndexError:
+                    continue
+                else:
                     break
+            else:
+                continue
 
     # Load the JSON file for table columns and process table columns if specified
-    if table_columns and table_sheet:
-        columns_dict = load_json_config(table_columns)
+    if columns_dict and table_sheet:
         try:
             table_sheet = workbook[table_sheet]
             for col in columns_dict:
@@ -138,9 +150,9 @@ def extract_cell_values(
                 try:
                     col_idx = header_row.index(col)
                 except ValueError:
-                    console.print(
-                        f'Warning: Column header "{col}" not found in sheet. Skipping this column.'
-                    )
+                    # console.print(
+                    #     f'Warning: Column header "{col}" not found in sheet. Skipping this column.'
+                    # )
                     continue
                 # Extract unique values from the column
                 column_values = [
@@ -182,15 +194,18 @@ def extract_cell_values(
             data[label] = None
         elif label == "offer_date":
             try:
-                value = pdl.parse(value, strict=False).to_date_string()
+                if isinstance(value, str):
+                    value = pdl.parse(value, strict=False).to_date_string()
+                elif isinstance(value, datetime.datetime):
+                    data[label] = value
             except Exception as e:
                 console.print(f"Error al identificar la fecha de la oferta: >> {e}")
                 if data["full_path"].startswith("\\\\EURFL01"):
                     posible_fecha = re.findall("\d{6,8}", data["full_path"])[0]
-                    data[label] = datetime.strptime(posible_fecha, "%Y%m%d")
+                    data[label] = datetime.datetime.strptime(posible_fecha, "%Y%m%d")
                 else:
-                    data[label] = datetime.strptime(
-                        "".join(data["full_path"].split("\\")[-4:-2]), "%Y%m%d"
+                    data[label] = datetime.datetime.strptime(
+                        "".join(data["full_path"].split("\\")[-4:-1]), "%Y%m%d"
                     )
 
     return data
@@ -245,20 +260,26 @@ def apply_styles(ws, style_dict, cell_ranges):
         if named_style not in ws.parent.named_styles:
             ws.parent.add_named_style(named_style)
 
-    console.print("Applying styles to the output workbook...")
-    # Apply default style to all cells if it exists
-    if "default" in style_dict:
-        for row in ws.iter_rows():
-            for cell in row:
-                cell.style = style_dict["default"]
-                if (
-                    cell.value
-                    and isinstance(cell.value, str)
-                    and os.path.exists(cell.value)
-                ):
-                    cell.hyperlink = cell.value  # set hyperlink
-                    cell.style = style_dict["hyperlink"]
+    # console.print("Applying styles to the output workbook...")
+    # # Apply default style to all cells if it exists
+    # start = perf_counter()
+    # if "default" in style_dict:
+    #     for row in ws.iter_rows():
+    #         # TODO: Progress Bar
+    #         # INFO: Los estilos deberian aplicarse a rangos enteros, mirar!!
+    #         for cell in row:
+    #             cell.style = style_dict["default"]
+    #             if (
+    #                 cell.value
+    #                 and isinstance(cell.value, str)
+    #                 and os.path.exists(cell.value)
+    #             ):
+    #                 cell.hyperlink = cell.value  # set hyperlink
+    #                 cell.style = style_dict["hyperlink"]
+    # end = perf_counter()
+    # console.print(f"Took {end - start}")
 
+    console.print(f"Applying named styles...")
     # Apply other styles
     for style_name, ranges in cell_ranges.items():
         if style_name in style_dict:  # Check if the style is defined
@@ -328,7 +349,7 @@ def write_output(
     sheet.cell(column=1, row=3, value="Created by ")
     sheet.cell(column=2, row=3, value=os.environ.get("USERNAME"))
     sheet.cell(column=3, row=3, value=" on the ")
-    sheet.cell(column=4, row=3, value=datetime.now())
+    sheet.cell(column=4, row=3, value=datetime.datetime.now())
 
     if use_previous_data:
         previous_data = load_previous_data(output_file, sheet_name)
@@ -351,69 +372,142 @@ def write_output(
     workbook.save(output_file)
 
 
-def main():
+def create_ddb_table(df: pd.DataFrame, db_file: str, **params):
+    db = duckdb.connect(db_file)
+    console.print(f"Creating table into DuckDB file {db_file}...")
+    table_name = params.get("table_name")
+    query_file = params.get("query_file")
+    db.register(f"{table_name}_temp", df)
+    if not all([table_name, query_file]):
+        console.print("table_name and query_file must be specified before running.")
+        return
+
+    db.execute(
+        f"create or replace table {table_name} as select * from {table_name}_temp"
+    )
+    # Read file and split queries
+    console.print("Fixing data...")
+    with open(query_file, "r", encoding="utf8") as f:
+        queries = f.read().split(";")
+
+    # Iterate over each query
+    for query in queries:
+        # Skip empty queries
+        if not query.strip():
+            continue
+
+        # Replace placeholders with parameters
+        for placeholder, value in params.items():
+            query = query.replace("{" + placeholder + "}", value)
+
+        # Execute query
+        print(f"Executing query: {query}")
+        db.execute(query)
+
+    return
+
+
+def main(update_offers: bool = False, current_year: bool = True):
     # TODO: Keep track of all the offers that have already been read in the file
     # We can do that by listing all the filenames in the Excel and compute the differente vs the found files
     # Create the output directory if not exists
     Path(DIR_OUTPUT).mkdir(exist_ok=True)
-    # Extract the workbooks information one by one, then append the dictionary records to a 'data' variable
-    cell_addresses = load_json_config(cell_address_file)
-    files = get_files_in_directory(directory, name_structure, extensions, limit_files)
-    console.print("Extracting cell values from files...")
-    data = [
-        extract_cell_values(file, cell_addresses, sap_mapping_file) for file in files
-    ]
 
-    # Use the 'data' variable to create a DataFrame structure which will be manipulated/modified
-    console.print("Assembling offer data into a DataFrame...")
-    df = pd.DataFrame(data)
+    all_duckdb_tables = ["ws_current_offers", "ws_hist_offers"]
+
+    if update_offers:
+        # Extract the workbooks information one by one, then append the dictionary records to a 'data' variable
+        cell_addresses = load_json_config(cell_address_file)
+        sap_columns_mapping = load_json_config(sap_mapping_file)
+        # files = get_files_in_directory(directory, name_structure, extensions, limit_files)
+        if current_year:
+            folder_pattern = r"2023"
+            ddb_table_name = all_duckdb_tables[0]
+        else:
+            folder_pattern = r"20[12][^3]"
+            ddb_table_name = all_duckdb_tables[1]
+
+        files = find_files_included(DIR_INPUT_REMOTE, folder_pattern)
+
+        with console.status(f"Extracting cell values from files...") as status:
+            data = []
+            for file in files:
+                file_shortened = file.name
+                status.update(f"Loading data from file: [bold green]{file_shortened}")
+                data.append(
+                    extract_cell_values(file, cell_addresses, sap_columns_mapping)
+                )
+        # Use the 'data' variable to create a DataFrame structure which will be manipulated/modified
+        console.print("Assembling offer data into a DataFrame...")
+        df = pd.DataFrame(data)
+        create_ddb_table(
+            df,
+            "./basedatos_wholesale.db",
+            query_file="./queries/fix_offers.sql",
+            table_name=ddb_table_name,
+        )
 
     # Get the data from disk sources
+    # TODO: 1) Traer los datos en una sola query, o varias y usar pandas para rellenar los que falten.
+    # 2) Traer solamente los datos que tengan ya en su fichero de ofertas, más los que hayan escrito
     console.print("Getting data from portfolio management...")
-    db = duckdb.connect()
-    db.execute(
-        f"CREATE VIEW master_tape AS SELECT * FROM parquet_scan('{DIR_PARQUET}/master_tape.parquet')"
-    )
-    db.execute(
-        f"CREATE VIEW offers_data AS SELECT * FROM parquet_scan('{DIR_PARQUET}/offers.parquet')"
-    )
-
     with open("./queries/offers_query.sql", encoding="utf8") as sql_file:
         query = sql_file.read()
 
+    db = duckdb.connect("./basedatos_wholesale.db")
     offers_data = db.execute(query).df()
+    modified_dfs = []
+    for table in all_duckdb_tables:
+        df = db.execute(f"select * from {table}").df()
 
-    # Plug said data into the offers dataframe
-    expanded_df = (
-        df
-        .merge(offers_data, how="left", left_on="offer_id", right_on="offerid")
-        .assign(
-            commercialdev=lambda df_: df_.commercialdev_x.fillna(df_.commercialdev_y),
-            jointdev=lambda df_: df_.jointdev_x.fillna(df_.jointdev_y),
-            unique_urs=lambda df_: df_.unique_urs_x.fillna(df_.unique_urs_y),
+        # Plug said data into the offers dataframe
+        expanded_df = (
+            df.merge(offers_data, how="left", left_on="offer_id", right_on="offerid")
+            .assign(
+                commercialdev=lambda df_: df_.commercialdev_x.fillna(
+                    df_.commercialdev_y
+                ),
+                jointdev=lambda df_: df_.jointdev_x.fillna(df_.jointdev_y),
+                unique_urs=lambda df_: df_.unique_urs_x.fillna(df_.unique_urs_y),
+            )
+            .drop(
+                columns=[
+                    "offerid",
+                    "commercialdev_x",
+                    "commercialdev_y",
+                    "jointdev_x",
+                    "jointdev_y",
+                    "unique_urs_x",
+                    "unique_urs_y",
+                ]
+            )
+            .sort_values(by=["offer_date"], ascending=False)
         )
-        .drop(
-            columns=[
-                "offerid",
-                "commercialdev_x",
-                "commercialdev_y",
-                "jointdev_x",
-                "jointdev_y",
-                "unique_urs_x",
-                "unique_urs_y",
-            ]
-        )
-        .sort_values(by=["offer_date"], ascending=False)
-    )
 
-    no_of_files = len(files)
+        expanded_df[split_explode_columns] = expanded_df.pipe(
+            get_missing_values_by_id, "unique_urs", db, "master_tape", "ur_current"
+        )
+
+        expanded_df = expanded_df.assign(
+            total_urs=lambda df_: df_.total_urs.fillna(df_.count_urs),
+            ppa=lambda df_: df_.ppa.fillna(df_.sum_ppa),
+            lsev_dec19=lambda df_: df_.lsev_dec19.fillna(df_.sum_lsev),
+        ).drop(columns=split_explode_columns)
+        modified_dfs.append(expanded_df)
+
+    final_df = pd.concat(modified_dfs)
+
+    no_of_files = final_df.shape[0]
+
+    db.close()
 
     # Define your custom formatting schema here
     cell_ranges = {
-        "header": [f"A{header_start}:BA{header_start}"],
+        "default": [f"A{header_start}:AY{header_start + no_of_files + 1}"],
+        "header": [f"A{header_start}:AY{header_start}"],
         "data": [
             f"C{header_start + 1}:F{header_start + no_of_files + 1}",
-            f"AY{header_start + 1}:BA{header_start + no_of_files + 1}",
+            f"AU{header_start + 1}:AV{header_start + no_of_files + 1}",
         ],
         "dates": [f"B{header_start + 1}:B{header_start + no_of_files + 1}", "D3"],
         "input": ["B3"],
@@ -422,9 +516,9 @@ def main():
     }
 
     write_output(
-        DIR_OUTPUT + output_file,
+        DIR_OUTPUT / output_file,
         sheet_name,
-        expanded_df,
+        final_df,
         create_style("./conf/styles.json"),
         cell_ranges,
         5,
@@ -433,3 +527,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # main(update_offers=True, current_year=False)
+    # main(update_offers=True)
