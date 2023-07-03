@@ -1,9 +1,10 @@
 from conf.settings import DIR_PIPE, DIR_OUTPUT
-from conf.functions import get_missing_values_by_id
-from pathlib import Path
+from conf.functions import Reference, get_missing_values_by_id
 from rich.console import Console
-import os
+from conf.functions import create_style, create_custom_chart
+from update_offers import write_output
 from datetime import datetime
+import os
 import duckdb
 import pandas as pd
 
@@ -83,12 +84,65 @@ pivot_table2 = pd.pivot_table(
     LSEV_DELTA_COLUMN=lambda df_: (df_[OFFER_PRICE_COLUMN] / df_[LSEV_COLUMN] - 1) * 100
 )
 
+header_start = 6
+rows = merged.shape[0]
+main_styles = create_style("./conf/styles.json")
+custom_styles = {
+    "default": [
+        f"A{header_start}:AO{header_start + rows}",
+    ],
+    "header": [
+        f"A{header_start}:AO{header_start}",
+    ],
+    "percents": [
+        f"AO{header_start + 1}:AO{header_start + rows}",
+    ],
+    "dates": [
+        "B2",
+        f"N{header_start + 1}:N{header_start + rows}",
+        f"R{header_start + 1}:R{header_start + rows}",
+        f"V{header_start + 1}:V{header_start + rows}",
+        f"Y{header_start + 1}:Y{header_start + rows}",
+        f"AC{header_start + 1}:AC{header_start + rows}",
+        f"AF{header_start + 1}:AF{header_start + rows}",
+        f"AH{header_start + 1}:AH{header_start + rows}",
+    ],
+    "data": [
+        f"H{header_start + 1}:M{header_start + rows}",
+        f"AK{header_start + 1}:AM{header_start + rows}",
+    ],
+    "input": ["B3"],
+    "title": ["A1"],
+    "subtitle": ["A2:A3"],
+}
+
 # Create a Pandas Excel writer using openpyxl as the engine
-with pd.ExcelWriter(DIR_OUTPUT / FILENAME, engine="openpyxl") as writer:
+write_output(
+    DIR_OUTPUT / FILENAME,
+    DATA_SHEET_NAME,
+    merged,
+    main_styles,
+    custom_styles,
+    header_start,
+    "Pipeline Data"
+)
+
+
+with pd.ExcelWriter(DIR_OUTPUT / FILENAME, engine="openpyxl", mode="a", if_sheet_exists="overlay") as writer:
     console.print(f"Guardando fichero Excel: {FILENAME}")
-    merged.to_excel(writer, sheet_name=DATA_SHEET_NAME, index=False)
     # Write the first pivot table to an Excel file, starting at cell B3 of the 'PivotTable' sheet
     pivot_table1.to_excel(writer, sheet_name=STRAT_SHEET_NAME, startrow=2, startcol=1)
     # Write the second pivot table to the same Excel file, starting a few rows below the first pivot table
     startrow = len(pivot_table1) + 6  # 3 rows gap between the two tables
-    pivot_table2.to_excel(writer, sheet_name="Strats", startrow=startrow, startcol=1)
+    pivot_table2.to_excel(writer, sheet_name=STRAT_SHEET_NAME, startrow=startrow, startcol=1)
+
+data_y_size, data_x_size = pivot_table2.shape
+
+create_custom_chart(
+    DIR_OUTPUT / FILENAME,
+    STRAT_SHEET_NAME,
+    [2, data_x_size + 1, startrow + 1, startrow + 1 + data_y_size],
+    "bar",
+    3,
+    f"K15"
+)

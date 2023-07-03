@@ -8,7 +8,7 @@
     },
     "header": {
         "font": {"name": "Georgia", "size": 11, "bold": true, "italic": false, "color": "FFFFFF"},
-        "fill": {"pattern": "solid", "fgColor": "222844"},
+        "fill": {"pattern": "solid", "fgColor": "683E44"},
         "alignment": {"horizontal": "center", "vertical": "top"},
         "number_format": "General",
         "wrap_text": true
@@ -27,7 +27,7 @@
     },
     "input": {
         "font": {"name": "Georgia", "size": 10, "bold": true, "italic": false, "color": "0000FF"},
-        "fill": {"pattern": "solid", "fgColor": "FFFFCC"},
+        "fill": {"pattern": "solid", "fgColor": "DEE7EF"},
         "alignment": {"horizontal": "center", "vertical": "center"},
         "number_format": "General"
     },

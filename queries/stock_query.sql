@@ -8,19 +8,47 @@ select
             then 'Promo Conjunta'
         else 'Unidad Registral'
     end as tipo_agrupacion,
-    array_agg(distinct lat.category) as categories,
+    string_agg(distinct lat.category, ' | ') as categories,
     (count(*) filter (where m.updatedcategory = 'Sold Assets') * 1.0 / count(*)) as percent_sold,
     (count(*) filter (where m.updatedcategory = 'Sale Agreed') * 1.0 / count(*)) as percent_committed,
     (count(*) filter (where m.updatedcategory = 'Remaining Stock') * 1.0 / count(*)) as percent_stock,
-    array_agg(distinct m.ur_current) as unique_urs,
-    array_agg(distinct m.commercialdev) as commercialdevs,
-    array_agg(distinct m.jointdev) as jointdevs,
-    array_agg(distinct w.estrategia) as estrategias,
-    array_agg(distinct m.address) as addresses,
-    array_agg(distinct m.town) as municipality,
-    array_agg(distinct m.city) as city_province,
-    array_agg(distinct m.direccion_territorial) as dts,
-    array_agg(distinct m.cadastralreference) as cadastral_references,
+     case when count(distinct m.ur_current) > 2 then
+         array_to_string((array_agg(distinct m.ur_current::int))[1:2], ', ') || ' + other ' || count(distinct m.ur_current::int) - 2
+      else
+         string_agg(distinct m.ur_current::int, ', ')
+     end as ur_current,
+     case when count(distinct m.commercialdev::int) > 2 then
+         array_to_string((array_agg(distinct m.commercialdev::int))[1:2], ', ') || ' + other ' || count(distinct m.commercialdev::int) - 2
+      else
+         string_agg(distinct m.commercialdev::int, ', ')
+     end as commercialdev,
+     case when count(distinct m.jointdev::int) > 2 then
+         array_to_string((array_agg(distinct m.jointdev::int))[1:2], ', ') || ' + other ' || count(distinct m.jointdev::int) - 2
+      else
+         string_agg(distinct m.jointdev::int, ', ')
+     end as jointdev,
+    string_agg(distinct w.estrategia, ' | ') as estrategias,
+     case when count(distinct m.address) > 2 then
+         array_to_string((array_agg(distinct m.address))[1:2], ', ') || ' + other ' || count(distinct m.address) - 2
+      else
+         string_agg(distinct m.address, ', ')
+     end as address,
+     case when count(distinct m.town) > 2 then
+         array_to_string((array_agg(distinct m.town))[1:2], ', ') || ' + other ' || count(distinct m.town) - 2
+      else
+         string_agg(distinct m.town, ', ')
+     end as town,
+     case when count(distinct m.city) > 2 then
+         array_to_string((array_agg(distinct m.city))[1:2], ', ') || ' + other ' || count(distinct m.city) - 2
+      else
+         string_agg(distinct m.city, ', ')
+     end as city,
+     case when count(distinct m.cadastralreference) > 2 then
+         array_to_string((array_agg(distinct m.cadastralreference))[1:2], ', ') || ' + other ' || count(distinct m.cadastralreference) - 2
+      else
+         string_agg(distinct m.cadastralreference, ', ')
+     end as cadastralreference,
+    string_agg(distinct m.direccion_territorial, ', ') as dts,
     sum(coalesce(m.currentsaleprice, m.last_listing_price)) as listed_price,
     max(m.last_listing_date) as latest_listing_date,
     max(m.saledate) as latest_sale_date,
