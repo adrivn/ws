@@ -5,6 +5,7 @@ import duckdb
 import pandas as pd
 import pendulum as pdl
 import datetime
+import uuid
 from pathlib import Path
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.utils import get_column_letter
@@ -33,7 +34,6 @@ date_append_output_name = datetime.datetime.strftime(datetime.datetime.now(), "%
 output_file = f"#{date_append_output_name}_Coral_Homes_Offers_Data.xlsx"
 sheet_name = "Offers Data"
 header_start = 6
-latest_file_name_pattern = r"\d{8}_Coral_Homes_Offers_Data.xlsx"
 split_explode_columns = ["count_urs", "sum_ppa", "sum_lsev"]
 
 
@@ -211,22 +211,51 @@ def extract_cell_values(
 
 
 
+## TODO: Usar nombres de fichero por cada script, en variables como FILENAME_OUTPUT
 
-def load_previous_data(previous_file: str, sheet: str = sheet_name):
+def load_previous_data(data_type: str, sheet: str = sheet_name, start_row: int = header_start):
+    match data_type:
+        case "offers":
+            latest_file_name_pattern = r"#\d{8}_Coral_Homes_Offers_Data.xlsx"
+        case "pipe":
+            latest_file_name_pattern = r"#\d{8}_WS_Pipeline.xlsx"
+        case "stock":
+            latest_file_name_pattern = r"#\d{8}_Wholesale_Stock.xlsx"
+        case _:
+            raise TypeError("Data type can only be one of these: [offers, pipe, stock]")
+
+    matching_files = []
+    for f in Path(DIR_OUTPUT).glob("*.*"):
+        if re.match(latest_file_name_pattern, f.name):
+            matching_files.append(f)
+
+    sorted_files = sorted([f for f in matching_files], key=os.path.getmtime)
+    previous_file = sorted_files[-1]
     if os.path.isfile(previous_file):
         previous_df = pd.read_excel(
-            previous_file, sheet_name=sheet, skiprows=header_start - 1, index_col=0
+            previous_file, sheet_name=sheet, skiprows=start_row - 1, index_col=0
         )  # load the existing data
-        previous_df.index = previous_df.index.fillna("n/a")
-        previous_data = previous_df.iloc[
-            :, header_start:
-        ]  # select only the additional columns (assuming they start at column F)
+        previous_df.index = previous_df.unique_id
     else:
         previous_data = (
             pd.DataFrame()
         )  # create an empty DataFrame for the case where no previous data exists
     return previous_data
 
+def enrich_offers(
+    dataframe: pd.DataFrame,
+    reuse_latest_file: bool = False
+):
+    df = dataframe.set_index("unique_id")
+
+    # Ingest previous data
+    if reuse_latest_file:
+        previous_data = load_previous_data("offers", sheet_name)
+        joined_df = df.join(previous_data)
+    else:
+        joined_df = df
+
+    return joined_df
 
 def write_output(
     output_file: str,
@@ -255,7 +284,8 @@ def write_output(
     sheet.cell(column=2, row=2, value=datetime.datetime.now())
     sheet.cell(column=1, row=3, value="Created by:")
     sheet.cell(column=2, row=3, value=os.environ.get("USERNAME"))
-    sheet.cell(column=1, row=(start_row - 1), value=f"=COUNTA(B{start_row + 1}:B{start_row + total_rows})")
+    sheet.cell(column=1, row=(start_row - 1), value=f"=COUNTA(A{start_row + 1}:A{start_row + total_rows})")
+
 
     # Writing data from dataframe to sheet starting from start_row
     for i, row in enumerate(dataframe_to_rows(dataframe, index=False, header=True), 1):
@@ -339,7 +369,10 @@ def main(update_offers: bool = False, current_year: bool = True):
                 )
         # Use the 'data' variable to create a DataFrame structure which will be manipulated/modified
         console.print("Assembling offer data into a DataFrame...")
-        df = pd.DataFrame(data)
+        df = (pd.DataFrame(data)
+            )
+        console.print("Creating UUIDs")
+        df = df.assign(unique_id=lambda df_: df_.full_path.apply(lambda x: uuid.uuid5(uuid.NAMESPACE_DNS, x)))
         create_ddb_table(
             df,
             "./basedatos_wholesale.db",
@@ -359,7 +392,7 @@ def main(update_offers: bool = False, current_year: bool = True):
     modified_dfs = []
     for table in all_duckdb_tables:
         df = db.execute(f"select * from {table}").df()
-
+        df["unique_id"] = df.unique_id.astype(str)
         # Plug said data into the offers dataframe
         expanded_df = (
             df.merge(offers_data, how="left", left_on="offer_id", right_on="offerid")
@@ -395,7 +428,7 @@ def main(update_offers: bool = False, current_year: bool = True):
         ).drop(columns=split_explode_columns)
         modified_dfs.append(expanded_df)
 
-    final_df = pd.concat(modified_dfs)
+    final_df = pd.concat(modified_dfs).set_index("unique_id").reset_index()
 
     no_of_files = final_df.shape[0]
 
@@ -403,13 +436,13 @@ def main(update_offers: bool = False, current_year: bool = True):
 
     # Define your custom formatting schema here
     cell_ranges = {
-        "default": [f"A{header_start}:AY{header_start + no_of_files + 1}"],
-        "header": [f"A{header_start}:AY{header_start}"],
+        "default": [f"A{header_start}:AZ{header_start + no_of_files + 1}"],
+        "header": [f"A{header_start}:AZ{header_start}"],
         "data": [
-            f"C{header_start + 1}:F{header_start + no_of_files + 1}",
-            f"AU{header_start + 1}:AV{header_start + no_of_files + 1}",
+            f"D{header_start + 1}:G{header_start + no_of_files + 1}",
+            f"AV{header_start + 1}:AW{header_start + no_of_files + 1}",
         ],
-        "dates": [f"B{header_start + 1}:B{header_start + no_of_files + 1}"],
+        "dates": [f"C{header_start + 1}:C{header_start + no_of_files + 1}"],
         "input": ["B3"],
         "title": ["A1"],
         "subtitle": ["A3"],
@@ -423,11 +456,12 @@ def main(update_offers: bool = False, current_year: bool = True):
         cell_ranges,
         header_start,
         sheet_name,
+        # reuse_latest_file=True,
         autofit=False
     )
 
 
 if __name__ == "__main__":
-    # main()
+    main()
     # main(update_offers=True, current_year=False)
-    main(update_offers=True)
+    # main(update_offers=True)

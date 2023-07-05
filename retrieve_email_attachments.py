@@ -17,11 +17,11 @@ def retrieve_attachments(subject_pattern: str, filename_pattern: str, extensions
     # Listar todos los ficheros del directorio de destino, y filtrar contra los encontrados
     match top_level_dir, file_type:
         case "coralhudson", "pipe":
-            base_dir = Path("//EURFL01/advisors.hal/non-hudson/Coral Homes/CoralHudson/1. AM/8. Wholesale Channel/")
+            base_dir = Path("N:/Coral Homes/CoralHudson/1. AM/8. Wholesale Channel/")
         case "currentdir", "pipe":
             base_dir = Path("./_attachments/pipe_files/") 
         case "coralhudson", "offers":
-            base_dir = Path("//EURFL01/advisors.hal/non-hudson/Coral Homes/CoralHudson/1. AM/8. Wholesale Channel/Ofertas recibidas SVH/")
+            base_dir = Path("N:/Coral Homes/CoralHudson/1. AM/8. Wholesale Channel/Ofertas recibidas SVH/")
         case "currentdir", "offers":
             base_dir = Path("./_attachments/offer_files/") 
 
@@ -59,14 +59,15 @@ def retrieve_attachments(subject_pattern: str, filename_pattern: str, extensions
                     else:
                         guardados += 1
                         # Get the email's received time and format it as a directory path
+                        year_folder = received_time.strftime("%Y")
+                        day_folder = received_time.strftime("%Y%m%d")
+
                         match file_type:
                             case "pipe":
                                 full_dir = base_dir / f"WS PIPE {year_folder}"
                             case "offers":
                                 full_dir = base_dir / year_folder / day_folder
 
-                        year_folder = received_time.strftime("%Y")
-                        day_folder = received_time.strftime("%Y%m%d")
 
                         # Create the directory if it doesn't exist
                         full_dir.mkdir(parents=True, exist_ok=True)
@@ -97,7 +98,6 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--path",
-        required=True,
         default="coralhudson",
         choices=["coralhudson", "currentdir"],
         help="Where to save down the files to.",
