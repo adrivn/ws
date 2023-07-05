@@ -1,5 +1,7 @@
 update {table_name} set offer_date = regexp_replace(trim(offer_date), '[\.\/]', '-', 'g') where regexp_matches(offer_date, '[\.\/]') = true;
 update {table_name} set offer_date = strptime(offer_date, '%d-%m-%Y') where regexp_matches(offer_date, '^\d{2}-.');
+update {table_name} set offer_price = regexp_extract(offer_price, '\d+\.?\d+') where regexp_matches(offer_price, '[a-zA-Z\s]');
+update {table_name} set appraisal_price = regexp_extract(appraisal_price, '\d+\.?\d+') where regexp_matches(offer_price, '[a-zA-Z\s]');
 update {table_name} set web_price = NULL where regexp_matches(web_price, '\D');
 update {table_name} set sap_price = NULL where regexp_matches(sap_price, '\D');
 update {table_name} set offer_date = strptime(array_extract(regexp_split_to_array(full_path, '\\'), 12)[:9], '%Y%m%d') where regexp_matches(offer_date, '^[345789]') or offer_date is null;
@@ -9,6 +11,8 @@ update {table_name} set jointdev = string_to_array(regexp_replace(jointdev,'[\[\
 update {table_name} set offer_id = regexp_replace(trim(offer_id), '[\n\t\W]', '', 'g')[:7] where regexp_matches(offer_id, '[\n\t\W]');
 update {table_name} set offer_id = NULL where len(offer_id) < 6 or regexp_matches(offer_id, '[a-zA-Z]');
 alter table {table_name} alter column offer_date set data type date;
+alter table {table_name} alter column offer_price set data type double;
+alter table {table_name} alter column appraisal_price set data type double;
 alter table {table_name} alter column web_price set data type double;
 alter table {table_name} alter column sap_price set data type double;
 alter table {table_name} alter column unique_urs set data type int[];

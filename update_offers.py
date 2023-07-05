@@ -255,7 +255,47 @@ def enrich_offers(
     else:
         joined_df = df
 
-    return joined_df
+    console.print("Getting data from portfolio management...")
+    with open("./queries/offers_query.sql", encoding="utf8") as sql_file:
+        query = sql_file.read()
+
+    with duckdb.connect("./basedatos_wholesale.db") as db:
+        offers_data = db.execute(query).df()
+
+    expanded_df = (
+        joined_df.merge(offers_data, how="left", left_on="offer_id", right_on="offerid")
+        .assign(
+            commercialdev=lambda df_: df_.commercialdev_x.fillna(
+                df_.commercialdev_y
+            ),
+            jointdev=lambda df_: df_.jointdev_x.fillna(df_.jointdev_y),
+            unique_urs=lambda df_: df_.unique_urs_x.fillna(df_.unique_urs_y),
+        )
+        .drop(
+            columns=[
+                "offerid",
+                "commercialdev_x",
+                "commercialdev_y",
+                "jointdev_x",
+                "jointdev_y",
+                "unique_urs_x",
+                "unique_urs_y",
+            ]
+        )
+        .sort_values(by=["offer_date"], ascending=False)
+    )
+
+    expanded_df[split_explode_columns] = expanded_df.pipe(
+        get_missing_values_by_id, "unique_urs", db, "master_tape", "ur_current"
+    )
+
+    expanded_df = expanded_df.assign(
+        total_urs=lambda df_: df_.total_urs.fillna(df_.count_urs),
+        ppa=lambda df_: df_.ppa.fillna(df_.sum_ppa),
+        lsev_dec19=lambda df_: df_.lsev_dec19.fillna(df_.sum_lsev),
+    ).drop(columns=split_explode_columns)
+
+    return expanded_df
 
 def write_output(
     output_file: str,
@@ -303,36 +343,36 @@ def write_output(
 
 
 def create_ddb_table(df: pd.DataFrame, db_file: str, **params):
-    db = duckdb.connect(db_file)
     console.print(f"Creating table into DuckDB file {db_file}...")
     table_name = params.get("table_name")
     query_file = params.get("query_file")
-    db.register(f"{table_name}_temp", df)
-    if not all([table_name, query_file]):
-        console.print("table_name and query_file must be specified before running.")
-        return
+    with duckdb.connect(db_file) as db:
+        db.register(f"{table_name}_temp", df)
+        if not all([table_name, query_file]):
+            console.print("table_name and query_file must be specified before running.")
+            return
 
-    db.execute(
-        f"create or replace table {table_name} as select * from {table_name}_temp"
-    )
-    # Read file and split queries
-    console.print("Fixing data...")
-    with open(query_file, "r", encoding="utf8") as f:
-        queries = f.read().split(";")
+        db.execute(
+            f"create or replace table {table_name} as select * from {table_name}_temp"
+        )
+        # Read file and split queries
+        console.print("Fixing data...")
+        with open(query_file, "r", encoding="utf8") as f:
+            queries = f.read().split(";")
 
-    # Iterate over each query
-    for query in queries:
-        # Skip empty queries
-        if not query.strip():
-            continue
+        # Iterate over each query
+        for query in queries:
+            # Skip empty queries
+            if not query.strip():
+                continue
 
-        # Replace placeholders with parameters
-        for placeholder, value in params.items():
-            query = query.replace("{" + placeholder + "}", value)
+            # Replace placeholders with parameters
+            for placeholder, value in params.items():
+                query = query.replace("{" + placeholder + "}", value)
 
-        # Execute query
-        print(f"Executing query: {query}")
-        db.execute(query)
+            # Execute query
+            print(f"Executing query: {query}")
+            db.execute(query)
 
     return
 
@@ -340,6 +380,7 @@ def create_ddb_table(df: pd.DataFrame, db_file: str, **params):
 def main(update_offers: bool = False, current_year: bool = True):
     # TODO: Keep track of all the offers that have already been read in the file
     # We can do that by listing all the filenames in the Excel and compute the differente vs the found files
+
     # Create the output directory if not exists
     Path(DIR_OUTPUT).mkdir(exist_ok=True)
 
@@ -383,57 +424,13 @@ def main(update_offers: bool = False, current_year: bool = True):
     # Get the data from disk sources
     # TODO: 1) Traer los datos en una sola query, o varias y usar pandas para rellenar los que falten.
     # 2) Traer solamente los datos que tengan ya en su fichero de ofertas, más los que hayan escrito
-    console.print("Getting data from portfolio management...")
-    with open("./queries/offers_query.sql", encoding="utf8") as sql_file:
-        query = sql_file.read()
+    with duckdb.connect("./basedatos_wholesale.db") as db:
+        df = db.execute(" UNION ".join(["select * from " + t for t in all_duckdb_tables])).df()
 
-    db = duckdb.connect("./basedatos_wholesale.db")
-    offers_data = db.execute(query).df()
-    modified_dfs = []
-    for table in all_duckdb_tables:
-        df = db.execute(f"select * from {table}").df()
-        df["unique_id"] = df.unique_id.astype(str)
-        # Plug said data into the offers dataframe
-        expanded_df = (
-            df.merge(offers_data, how="left", left_on="offer_id", right_on="offerid")
-            .assign(
-                commercialdev=lambda df_: df_.commercialdev_x.fillna(
-                    df_.commercialdev_y
-                ),
-                jointdev=lambda df_: df_.jointdev_x.fillna(df_.jointdev_y),
-                unique_urs=lambda df_: df_.unique_urs_x.fillna(df_.unique_urs_y),
-            )
-            .drop(
-                columns=[
-                    "offerid",
-                    "commercialdev_x",
-                    "commercialdev_y",
-                    "jointdev_x",
-                    "jointdev_y",
-                    "unique_urs_x",
-                    "unique_urs_y",
-                ]
-            )
-            .sort_values(by=["offer_date"], ascending=False)
-        )
-
-        expanded_df[split_explode_columns] = expanded_df.pipe(
-            get_missing_values_by_id, "unique_urs", db, "master_tape", "ur_current"
-        )
-
-        expanded_df = expanded_df.assign(
-            total_urs=lambda df_: df_.total_urs.fillna(df_.count_urs),
-            ppa=lambda df_: df_.ppa.fillna(df_.sum_ppa),
-            lsev_dec19=lambda df_: df_.lsev_dec19.fillna(df_.sum_lsev),
-        ).drop(columns=split_explode_columns)
-        modified_dfs.append(expanded_df)
-
-    final_df = pd.concat(modified_dfs).set_index("unique_id").reset_index()
-
-    no_of_files = final_df.shape[0]
-
-    db.close()
-
+    df["unique_id"] = df.unique_id.astype(str)
+    # Plug said data into the offers dataframe
+    expanded_df = enrich_offers(df)
+    no_of_files = expanded_df.shape[0]
     # Define your custom formatting schema here
     cell_ranges = {
         "default": [f"A{header_start}:AZ{header_start + no_of_files + 1}"],
@@ -451,7 +448,7 @@ def main(update_offers: bool = False, current_year: bool = True):
     write_output(
         DIR_OUTPUT / output_file,
         sheet_name,
-        final_df,
+        expanded_df,
         create_style("./conf/styles.json"),
         cell_ranges,
         header_start,
