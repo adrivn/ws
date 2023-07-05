@@ -1,8 +1,14 @@
 {
   "Promoción comercial/obra nueva": "commercialdev",
+  "PROMOCION_COMERCIAL": "commercialdev",
   "Promoción conjunta": "jointdev",
+  "PROMOCION_CONJUNTA": "jointdev",
   "Un.Registral": "unique_urs",
+  "UNIDAD_REGISTRAL": "unique_urs",
   "Tipo de inmueble": "asset_type",
+  "DESC_TIPO_INMUEBLE": "asset_type",
   "Dirección": "address",
-  "Emplazamiento": "asset_location"
+  "DESC_UR": "address",
+  "Emplazamiento": "asset_location",
+  "DESC_UR_PROMO": "asset_location"
 }

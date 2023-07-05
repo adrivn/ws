@@ -1,4 +1,3 @@
-from os import write
 from conf.settings import DIR_OUTPUT
 from conf.functions import create_style
 from update_offers import write_output

@@ -1,5 +1,4 @@
 from conf.settings import DIR_PIPE, DIR_OUTPUT
-from conf.functions import Reference, get_missing_values_by_id
 from rich.console import Console
 from conf.functions import create_style, create_custom_chart
 from update_offers import write_output

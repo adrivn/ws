@@ -10,7 +10,7 @@ from pathlib import Path
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.utils import get_column_letter
 from rich.console import Console
-from conf.settings import DIR_OUTPUT, DIR_INPUT_LOCAL, DIR_INPUT_REMOTE
+from conf.settings import BASE_DIR, offers_conf, sap_mapping_file, cell_address_file, styles_file
 from conf.functions import (
     load_json_config,
     get_missing_values_by_id,
@@ -23,18 +23,12 @@ from conf.functions import (
 console = Console()
 
 # Instanciar las variables de ficheros, carpetas y otros
-# directory = DIR_INPUT_LOCAL / "offer_files/"
-directory = DIR_INPUT_REMOTE
-name_structure = ["[!$~][0-9]*[_ ]*"]
-limit_files = None
-extensions = [".xlsx"]
-cell_address_file = "./conf/cell_addresses.json"
-sap_mapping_file = "./conf/sap_columns_mapping.json"
-date_append_output_name = datetime.datetime.strftime(datetime.datetime.now(), "%Y%m%d")
-output_file = f"#{date_append_output_name}_Coral_Homes_Offers_Data.xlsx"
-sheet_name = "Offers Data"
-header_start = 6
-split_explode_columns = ["count_urs", "sum_ppa", "sum_lsev"]
+database_file = (BASE_DIR / "basedatos_wholesale.db").as_posix()
+header_start = offers_conf.get("header_start")
+output_sheet = offers_conf.get("sheet_name")
+output_dir = offers_conf.get("output_dir")
+output_file = "".join(["#", offers_conf.get("output_date"), offers_conf.get("output_file")])
+stylesheet = create_style(styles_file)
 
 
 def get_files_in_directory(
@@ -139,7 +133,10 @@ def extract_cell_values(
     # Load the JSON file for table columns and process table columns if specified
     if columns_dict and table_sheet:
         try:
-            table_sheet = workbook[table_sheet]
+            try:
+                table_sheet = workbook[table_sheet]
+            except KeyError:
+                table_sheet = workbook["Oferta"]
             for col in columns_dict:
                 # Assume the first row contains headers
                 header_row = next(
@@ -213,19 +210,11 @@ def extract_cell_values(
 
 ## TODO: Usar nombres de fichero por cada script, en variables como FILENAME_OUTPUT
 
-def load_previous_data(data_type: str, sheet: str = sheet_name, start_row: int = header_start):
-    match data_type:
-        case "offers":
-            latest_file_name_pattern = r"#\d{8}_Coral_Homes_Offers_Data.xlsx"
-        case "pipe":
-            latest_file_name_pattern = r"#\d{8}_WS_Pipeline.xlsx"
-        case "stock":
-            latest_file_name_pattern = r"#\d{8}_Wholesale_Stock.xlsx"
-        case _:
-            raise TypeError("Data type can only be one of these: [offers, pipe, stock]")
+def load_previous_data(sheet: str = output_sheet, start_row: int = header_start):
 
+    latest_file_name_pattern = offers_conf.get("output_file")
     matching_files = []
-    for f in Path(DIR_OUTPUT).glob("*.*"):
+    for f in Path(output_dir).glob("*.*"):
         if re.match(latest_file_name_pattern, f.name):
             matching_files.append(f)
 
@@ -246,54 +235,60 @@ def enrich_offers(
     dataframe: pd.DataFrame,
     reuse_latest_file: bool = False
 ):
-    df = dataframe.set_index("unique_id")
 
     # Ingest previous data
     if reuse_latest_file:
-        previous_data = load_previous_data("offers", sheet_name)
-        joined_df = df.join(previous_data)
+        previous_data = load_previous_data(output_sheet)
+        joined_df = dataframe.join(previous_data)
     else:
-        joined_df = df
+        joined_df = dataframe
 
     console.print("Getting data from portfolio management...")
     with open("./queries/offers_query.sql", encoding="utf8") as sql_file:
         query = sql_file.read()
 
-    with duckdb.connect("./basedatos_wholesale.db") as db:
+    with duckdb.connect(database_file) as db:
         offers_data = db.execute(query).df()
 
-    expanded_df = (
-        joined_df.merge(offers_data, how="left", left_on="offer_id", right_on="offerid")
-        .assign(
-            commercialdev=lambda df_: df_.commercialdev_x.fillna(
-                df_.commercialdev_y
-            ),
-            jointdev=lambda df_: df_.jointdev_x.fillna(df_.jointdev_y),
-            unique_urs=lambda df_: df_.unique_urs_x.fillna(df_.unique_urs_y),
-        )
-        .drop(
-            columns=[
-                "offerid",
-                "commercialdev_x",
-                "commercialdev_y",
-                "jointdev_x",
-                "jointdev_y",
-                "unique_urs_x",
-                "unique_urs_y",
-            ]
-        )
-        .sort_values(by=["offer_date"], ascending=False)
-    )
 
-    expanded_df[split_explode_columns] = expanded_df.pipe(
-        get_missing_values_by_id, "unique_urs", db, "master_tape", "ur_current"
-    )
+        expanded_df = (
+            joined_df.reset_index().merge(offers_data, how="left", left_on="offer_id", right_on="offerid")
+            .assign(
+                commercialdev=lambda df_: df_.commercialdev_x.fillna(
+                    df_.commercialdev_y
+                ),
+                jointdev=lambda df_: df_.jointdev_x.fillna(df_.jointdev_y),
+                unique_urs=lambda df_: df_.unique_urs_x.fillna(df_.unique_urs_y),
+            )
+            .drop(
+                columns=[
+                    "offerid",
+                    "commercialdev_x",
+                    "commercialdev_y",
+                    "jointdev_x",
+                    "jointdev_y",
+                    "unique_urs_x",
+                    "unique_urs_y",
+                ]
+            )
+            .sort_values(by=["offer_date"], ascending=False)
+            .set_index("unique_id")
+        )
 
-    expanded_df = expanded_df.assign(
-        total_urs=lambda df_: df_.total_urs.fillna(df_.count_urs),
-        ppa=lambda df_: df_.ppa.fillna(df_.sum_ppa),
-        lsev_dec19=lambda df_: df_.lsev_dec19.fillna(df_.sum_lsev),
-    ).drop(columns=split_explode_columns)
+        split_explode_columns = ["count_urs", "sum_ppa", "sum_lsev"]
+
+        expanded_df[split_explode_columns] = expanded_df.pipe(
+            get_missing_values_by_id, "unique_urs", db, "master_tape", "ur_current"
+        )
+
+    expanded_df = (expanded_df.assign(
+            total_urs=lambda df_: df_.total_urs.fillna(df_.count_urs),
+            ppa=lambda df_: df_.ppa.fillna(df_.sum_ppa),
+            lsev_dec19=lambda df_: df_.lsev_dec19.fillna(df_.sum_lsev),
+        )
+        .drop(columns=split_explode_columns)
+        .reset_index()
+    )
 
     return expanded_df
 
@@ -382,7 +377,8 @@ def main(update_offers: bool = False, current_year: bool = True):
     # We can do that by listing all the filenames in the Excel and compute the differente vs the found files
 
     # Create the output directory if not exists
-    Path(DIR_OUTPUT).mkdir(exist_ok=True)
+    console.print(f"Creating path to files: {output_dir}")
+    Path(output_dir).mkdir(exist_ok=True)
 
     all_duckdb_tables = ["ws_current_offers", "ws_hist_offers"]
 
@@ -390,7 +386,6 @@ def main(update_offers: bool = False, current_year: bool = True):
         # Extract the workbooks information one by one, then append the dictionary records to a 'data' variable
         cell_addresses = load_json_config(cell_address_file)
         sap_columns_mapping = load_json_config(sap_mapping_file)
-        # files = get_files_in_directory(directory, name_structure, extensions, limit_files)
         if current_year:
             folder_pattern = r"2023"
             ddb_table_name = all_duckdb_tables[0]
@@ -398,7 +393,7 @@ def main(update_offers: bool = False, current_year: bool = True):
             folder_pattern = r"20[12][^3]"
             ddb_table_name = all_duckdb_tables[1]
 
-        files = find_files_included(DIR_INPUT_REMOTE, folder_pattern)
+        files = find_files_included(offers_conf.get("directory"), folder_pattern)
 
         with console.status(f"Extracting cell values from files...") as status:
             data = []
@@ -416,7 +411,7 @@ def main(update_offers: bool = False, current_year: bool = True):
         df = df.assign(unique_id=lambda df_: df_.full_path.apply(lambda x: uuid.uuid5(uuid.NAMESPACE_DNS, x)))
         create_ddb_table(
             df,
-            "./basedatos_wholesale.db",
+            database_file,
             query_file="./queries/fix_offers.sql",
             table_name=ddb_table_name,
         )
@@ -424,10 +419,11 @@ def main(update_offers: bool = False, current_year: bool = True):
     # Get the data from disk sources
     # TODO: 1) Traer los datos en una sola query, o varias y usar pandas para rellenar los que falten.
     # 2) Traer solamente los datos que tengan ya en su fichero de ofertas, más los que hayan escrito
-    with duckdb.connect("./basedatos_wholesale.db") as db:
+    with duckdb.connect(database_file) as db:
         df = db.execute(" UNION ".join(["select * from " + t for t in all_duckdb_tables])).df()
 
     df["unique_id"] = df.unique_id.astype(str)
+    df = df.set_index("unique_id")
     # Plug said data into the offers dataframe
     expanded_df = enrich_offers(df)
     no_of_files = expanded_df.shape[0]
@@ -446,13 +442,13 @@ def main(update_offers: bool = False, current_year: bool = True):
     }
 
     write_output(
-        DIR_OUTPUT / output_file,
-        sheet_name,
+        output_dir / output_file,
+        output_sheet,
         expanded_df,
-        create_style("./conf/styles.json"),
+        stylesheet,
         cell_ranges,
         header_start,
-        sheet_name,
+        output_sheet,
         # reuse_latest_file=True,
         autofit=False
     )

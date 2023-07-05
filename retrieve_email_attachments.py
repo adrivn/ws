@@ -3,6 +3,7 @@ from rich.console import Console
 import datetime
 import argparse
 import re
+import glob
 import win32com.client
 
 console = Console()
@@ -17,15 +18,18 @@ def retrieve_attachments(subject_pattern: str, filename_pattern: str, extensions
     # Listar todos los ficheros del directorio de destino, y filtrar contra los encontrados
     match top_level_dir, file_type:
         case "coralhudson", "pipe":
-            base_dir = Path("N:/Coral Homes/CoralHudson/1. AM/8. Wholesale Channel/")
+            base_dir = Path("N:/CoralHudson/1. AM/8. Wholesale Channel/")
+            ficheros_existentes = [Path(f).name for f in glob.glob("N:/CoralHudson/1. AM/8. Wholesale Channel/WS PIPE*/[!~$]*.*")]
         case "currentdir", "pipe":
             base_dir = Path("./_attachments/pipe_files/") 
+            ficheros_existentes = [f.name for f in base_dir.rglob("*.*")]
         case "coralhudson", "offers":
-            base_dir = Path("N:/Coral Homes/CoralHudson/1. AM/8. Wholesale Channel/Ofertas recibidas SVH/")
+            base_dir = Path("N:/CoralHudson/1. AM/8. Wholesale Channel/Ofertas recibidas SVH/")
+            ficheros_existentes = [Path(f).name for f in glob.glob(base_dir.as_posix() + "/Ofertas recibidas SVH/2023/**/[!~$]*.*")]
         case "currentdir", "offers":
             base_dir = Path("./_attachments/offer_files/") 
+            ficheros_existentes = [f.name for f in base_dir.rglob("*.*")]
 
-    ficheros_existentes = [f.name for f in base_dir.rglob("*.*")]
 
     # Filtrado por fecha
     time_range = datetime.date.today() - datetime.timedelta(30 * number_of_months)

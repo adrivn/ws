@@ -4,6 +4,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, NamedStyle
 from openpyxl.utils.cell import coordinate_from_string, column_index_from_string
 from openpyxl.utils import get_column_letter
 from rich.console import Console
+import duckdb
 import openpyxl
 import json
 import re
@@ -19,7 +20,7 @@ def load_json_config(file):
 
 
 def get_missing_values_by_id(
-    df, column: str, con, lookup_source: str, column_id_source: str
+    df, column: str, connection: duckdb.DuckDBPyConnection, lookup_source: str, column_id_source: str
 ):
     # Step 1: Split the column into separate rows for each ID
     df = (
@@ -32,10 +33,7 @@ def get_missing_values_by_id(
         .explode()
     )
     # Step 2: Load the DataFrame into DuckDB
-    con.register("df", df.reset_index())
-    # Step 3: Join the DataFrame with the table containing the corresponding values for each ID
-    # Step 4: Group by the original index and sum the corresponding values
-    query = f"""SELECT df.index, 
+    query = f"""SELECT df.unique_id, 
     count(*) as count_urs, 
     sum(v.ppa) as sum_ppa,
     sum(v.lsev_dec19) as sum_lsev,
@@ -43,10 +41,13 @@ def get_missing_values_by_id(
     LEFT JOIN {lookup_source} v ON df.{column} = v.{column_id_source}
     GROUP BY 1
     """
-    result = con.execute(query).df()
-    result.to_clipboard()
-    # Step 5: Return a Series with the sum of corresponding values for each original index
-    return result.set_index("index")
+    with connection as con:
+        con.register("df", df.reset_index())
+        # Step 3: Join the DataFrame with the table containing the corresponding values for each ID
+        # Step 4: Group by the original index and sum the corresponding values
+        result = con.execute(query).df().set_index("unique_id")
+        # Step 5: Return a Series with the sum of corresponding values for each original index
+    return result
 
 
 def find_files_included(directory, include_pattern):
@@ -69,6 +70,7 @@ def auto_format_cell_width(ws):
 
 def create_style(json_file):
     # Load styles from JSON file
+    print(json_file)
     with open(json_file) as file:
         style_data = json.load(file)
 
