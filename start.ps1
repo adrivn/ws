@@ -1,8 +1,8 @@
 # The path to your Python virtual environment
-$venvPath = "~/Envs/pacific"
+$venvPath = "~/Envs/main"
 
 # The paths to your Python scripts
-$scriptPaths = @("./update_offers.py", "./update_stock.py")
+$scriptPath = "./start.py"
 
 # Activate the virtual environment
 Write-Host "Activating Python virtual environment..."
@@ -15,13 +15,11 @@ if ($env:VIRTUAL_ENV -eq $null) {
 }
 
 # Loop through each script and execute it
-foreach ($scriptPath in $scriptPaths) {
-    Write-Host "Running Python script at $scriptPath..."
-    python $scriptPath
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "Failed to execute Python script at $scriptPath. Exiting..."
-        exit
-    }
+Write-Host "Running Python script at $scriptPath..."
+python $scriptPath
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Failed to execute Python script at $scriptPath. Exiting..."
+    exit
 }
 
 Write-Host "All scripts executed successfully. Exiting..."

@@ -1,4 +1,4 @@
-from conf.settings import DIR_OUTPUT
+from conf.settings import stock_conf, database_file, styles_file
 from conf.functions import create_style
 from update_offers import write_output
 from datetime import datetime
@@ -7,17 +7,43 @@ import duckdb
 
 con = Console()
 
+# TODO: 1) Crear multiples pestañas, una para stock vivo, otra para stock vendido, otra para stock que ya no esta en WS
+
+# Instanciar las variables de ficheros, carpetas y otros
+header_start = stock_conf.get("header_start")
+directory = stock_conf.get("directory")
+output_sheet = stock_conf.get("sheet_name")
+output_dir = stock_conf.get("output_dir")
+output_file = "".join(["#", stock_conf.get("output_date"), stock_conf.get("output_file")])
+stylesheet = create_style(styles_file)
+
 con.print("Accessing data...")
-with open("./queries/stock_query.sql", encoding="utf8") as sql_file:
-    query = sql_file.read()
 
-db = duckdb.connect("./basedatos_wholesale.db")
-agg_data = db.execute(query).df()
+lote_queries = []
+datos = {
+}
 
-header_start = 6
-rows = agg_data.shape[0]
+with duckdb.connect(database_file) as db:
+    for tipo_agregacion in ["Wholesale", "Wholesale - from Retail", "No longer in Wholesale"]:
+    # Iterate over each query
+        with open("./queries/stock_query.sql", encoding="utf8") as sql_file:
+            query = sql_file.read()
+            if not query.strip():
+                continue
 
-main_styles = create_style("./conf/styles.json")
+        # Replace placeholders with parameters
+        query = query.replace("{{placeholder}}", "'" + tipo_agregacion + "'")
+
+        # Execute query
+        print(f"Filtering for channel: {tipo_agregacion}")
+        query_as_df = db.execute(query).df()
+        lote_queries.append(query_as_df)
+        sheet_data = {tipo_agregacion: query_as_df}
+        datos |= sheet_data
+
+rows = datos["Wholesale"].shape[0]
+
+
 custom_styles = {
     "default": [
         f"A{header_start}:AK{header_start + rows}",
@@ -43,15 +69,15 @@ custom_styles = {
 }
 
 con.print("Creating Excel output file...")
-now_sheet = datetime.strftime(datetime.now(), "%d-%m-%Y")
-now_filename = datetime.strftime(datetime.now(), "%Y%m%d")
+
 write_output(
-    DIR_OUTPUT / f"#{now_filename}_Wholesale_Stock.xlsx",
-    f"Wholesale Stock {now_sheet}",
-    agg_data,
-    main_styles,
+    output_dir / output_file,
+    datos,
+    stylesheet,
     custom_styles,
     header_start,
-    "Stock Data"
+    output_sheet,
+    # reuse_latest_file=True,
+    # autofit=False
 )
 # agg_data.to_excel(DIR_OUTPUT / f"#{now_filename}_Wholesale_Stock.xlsx", index=False, sheet_name=f"Wholesale Stock {now_sheet}")

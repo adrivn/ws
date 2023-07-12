@@ -8,14 +8,10 @@ import win32com.client
 
 console = Console()
 
-# TODO: Refactorizar los parametros, se esta duplicando la evaluacion o se esta haciendo en lugares donde no se debe (CLI en lugar de la propia funcion). Ej: los patrones de regex, y todo lo que dependa de que sea 'pipe' u 'offers' debe evaluarse en la propia funcion, de una tacada.
-
-def retrieve_attachments(subject_pattern: str, filename_pattern: str, extensions: list, file_type: str, top_level_dir: str, number_of_months: int):
-    outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
-    inbox = outlook.GetDefaultFolder(6)  # "6" refers to the inbox
-
+def retrieve_attachments(subject_pattern: str, filename_pattern: str, extensions: list, file_type: str, top_level_dir: str, number_of_months: int = 1):
     # Conseguir todos los ficheros del directorio
     # Listar todos los ficheros del directorio de destino, y filtrar contra los encontrados
+    console.print(f"Checking existing {file_type} files...")
     match top_level_dir, file_type:
         case "coralhudson", "pipe":
             base_dir = Path("N:/CoralHudson/1. AM/8. Wholesale Channel/")
@@ -32,16 +28,24 @@ def retrieve_attachments(subject_pattern: str, filename_pattern: str, extensions
 
 
     # Filtrado por fecha
-    time_range = datetime.date.today() - datetime.timedelta(30 * number_of_months)
+    time_range = datetime.date.today() - datetime.timedelta(30 * int(number_of_months))
     time_string = time_range.strftime("%m/%d/%Y")
-    print(f"La fecha de busqueda es superior al { time_string }")
+    console.print(f"Buscando mensajes recibidos desdes el { time_range.strftime('%d/%m/%Y')}")
+
+    outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
+    inbox = outlook.GetDefaultFolder(6)  # "6" refers to the inbox
     sFilter = f"[ReceivedTime] >= '{time_string}'"
     messages = inbox.Items.Restrict(sFilter)
+
+    if messages.count == 0:
+        print("No messages found.")
+        return
 
     message_count = 0
     duplicados = 0
     guardados = 0
     for message in messages:
+        console.print(f"Parsing message: {message.Subject}")
         if re.search(subject_pattern.lower(), message.Subject.lower()):
             message_count += 1
             received_time = message.ReceivedTime
@@ -56,11 +60,12 @@ def retrieve_attachments(subject_pattern: str, filename_pattern: str, extensions
                 if re.search(
                     filename_pattern.lower(), attachment.FileName.lower()
                 ) and any(attachment.FileName.endswith(ext) for ext in extensions):
-                    console.print("\tAttachment found:", attachment.FileName, style="bold red")
                     # Filtrar aquellos que ya estan encontrados
                     if attachment.FileName in ficheros_existentes:
+                        console.print("\tAttachment ignored. Already in folder.")
                         duplicados += 1
                     else:
+                        console.print("\tAttachment found:", attachment.FileName, style="bold red")
                         guardados += 1
                         # Get the email's received time and format it as a directory path
                         year_folder = received_time.strftime("%Y")
@@ -111,8 +116,8 @@ if __name__ == "__main__":
     match args.file_type:
         case "pipe":
             retrieve_attachments(
-                "\d{6,8} Pipe 20",
-                "^\d{6,8} Pipe 20",
+                r"\d{6,8} Pipe 20",
+                r"^\d{6,8} Pipe 20",
                 [".xlsx", ".xls", ".xlsb", ".xlsm"],
                 args.file_type,
                 args.path,
@@ -120,8 +125,8 @@ if __name__ == "__main__":
             )
         case "offers":
             retrieve_attachments(
-                "OF CH ",
-                "^\d{6,8}[_ ]+OF_",
+                r"OF CH ",
+                r"^\d{6,8}[_ ]+OF_",
                 [".xlsx", ".xls", ".xlsb", ".xlsm"],
                 args.file_type,
                 args.path,
@@ -129,5 +134,5 @@ if __name__ == "__main__":
             )
         case _:
             raise ValueError(
-                f"You must specify either 'pipe' or 'offers' in the type, because {args.type} is not allowed."
+                f"You must specify either 'pipe' or 'offers' in the type, because {args.file_type} is not allowed."
             )

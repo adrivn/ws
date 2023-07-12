@@ -56,7 +56,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--table", required=True, help="Name of the table in the PostgreSQL database.")
     parser.add_argument("--filename", required=False, help="Name of the output file.", default=None)
-    parser.add_argument("--path", required=False, help="Path to the output .parquet file.", default="N:/Coral Homes/CoralHudson/6. Stock/Parquet/")
+    parser.add_argument("--path", required=False, help="Path to the output .parquet file.", default="N:/CoralHudson/6. Stock/Parquet/")
     args = parser.parse_args()
 
     if args.filename == None:

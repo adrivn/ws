@@ -6,11 +6,12 @@ import pandas as pd
 import pendulum as pdl
 import datetime
 import uuid
+import argparse
 from pathlib import Path
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.utils import get_column_letter
 from rich.console import Console
-from conf.settings import BASE_DIR, offers_conf, sap_mapping_file, cell_address_file, styles_file
+from conf.settings import database_file, offers_conf, sap_mapping_file, cell_address_file, styles_file
 from conf.functions import (
     load_json_config,
     get_missing_values_by_id,
@@ -23,7 +24,6 @@ from conf.functions import (
 console = Console()
 
 # Instanciar las variables de ficheros, carpetas y otros
-database_file = (BASE_DIR / "basedatos_wholesale.db").as_posix()
 header_start = offers_conf.get("header_start")
 output_sheet = offers_conf.get("sheet_name")
 output_dir = offers_conf.get("output_dir")
@@ -196,7 +196,7 @@ def extract_cell_values(
                     data[label] = value
             except Exception as e:
                 console.print(f"Error al identificar la fecha de la oferta: >> {e}")
-                if data["full_path"].startswith("\\\\EURFL01"):
+                if data["full_path"].startswith("N:"):
                     posible_fecha = re.findall("\d{6,8}", data["full_path"])[0]
                     data[label] = datetime.datetime.strptime(posible_fecha, "%Y%m%d")
                 else:
@@ -292,10 +292,11 @@ def enrich_offers(
 
     return expanded_df
 
+# NOTE: Implementar los datos mediante diccionario que contenga {"nombre de hoja": datos a incluir}
+
 def write_output(
     output_file: str,
-    sheet_name: str,
-    dataframe: pd.DataFrame,
+    data: dict[pd.DataFrame | str],
     style_specs: str,
     style_ranges: str,
     start_row: int,
@@ -309,32 +310,35 @@ def write_output(
     # Remove the default sheet created and add new sheets as per data keys
     default_sheet = workbook.active
     workbook.remove(default_sheet)
-    sheet = workbook.create_sheet(sheet_name)
-    total_rows, total_columns = dataframe.shape
-    last_column_as_letter = get_column_letter(total_columns)
+    for sheet_name, dataframe in data.items():
+        sheet = workbook.create_sheet(sheet_name)
+        total_rows, total_columns = dataframe.shape
+        last_column_as_letter = get_column_letter(total_columns)
 
-    # Writing workbook creation date, title and description
-    sheet.cell(column=1, row=1, value=title)
-    sheet.cell(column=1, row=2, value="Created on:")
-    sheet.cell(column=2, row=2, value=datetime.datetime.now())
-    sheet.cell(column=1, row=3, value="Created by:")
-    sheet.cell(column=2, row=3, value=os.environ.get("USERNAME"))
-    sheet.cell(column=1, row=(start_row - 1), value=f"=COUNTA(A{start_row + 1}:A{start_row + total_rows})")
+        # Writing workbook creation date, title and description
+        sheet.cell(column=1, row=1, value=title)
+        sheet.cell(column=1, row=2, value="Created on:")
+        sheet.cell(column=2, row=2, value=datetime.datetime.now())
+        sheet.cell(column=1, row=3, value="Created by:")
+        sheet.cell(column=2, row=3, value=os.environ.get("USERNAME"))
+        sheet.cell(column=1, row=(start_row - 1), value=f"=COUNTA(A{start_row + 1}:A{start_row + total_rows})")
 
 
-    # Writing data from dataframe to sheet starting from start_row
-    for i, row in enumerate(dataframe_to_rows(dataframe, index=False, header=True), 1):
-        for j, cell in enumerate(row, 1):
-            cell = str(tuple(cell)) if isinstance(cell, list) else cell
-            sheet.cell(row=i + start_row - 1, column=j, value=cell)
+        # Writing data from dataframe to sheet starting from start_row
+        for i, row in enumerate(dataframe_to_rows(dataframe, index=False, header=True), 1):
+            for j, cell in enumerate(row, 1):
+                cell = str(tuple(cell)) if isinstance(cell, list) else cell
+                sheet.cell(row=i + start_row - 1, column=j, value=cell)
 
-    autofit_check = kwargs.get("autofit", True)
-    apply_styles(sheet, style_specs, style_ranges, autofit_check)
-    filters = sheet.auto_filter
-    filters.ref = f"A{start_row}:{last_column_as_letter}{total_rows}"
-    sheet.freeze_panes = f"B{start_row + 1}"
-    console.print(f"Saving output file in: {output_file}")
+        autofit_check = kwargs.get("autofit", True)
+        apply_styles(sheet, style_specs, style_ranges, autofit_check)
+        filters = sheet.auto_filter
+        filters.ref = f"A{start_row}:{last_column_as_letter}{total_rows}"
+        sheet.freeze_panes = f"B{start_row + 1}"
+
+    console.print(f"Saving output file")
     workbook.save(output_file)
+    console.print(f"File saved in: {output_file}")
 
 
 def create_ddb_table(df: pd.DataFrame, db_file: str, **params):
@@ -427,6 +431,7 @@ def main(update_offers: bool = False, current_year: bool = True):
     # Plug said data into the offers dataframe
     expanded_df = enrich_offers(df)
     no_of_files = expanded_df.shape[0]
+    datos = {output_sheet: expanded_df}
     # Define your custom formatting schema here
     cell_ranges = {
         "default": [f"A{header_start}:AZ{header_start + no_of_files + 1}"],
@@ -441,10 +446,10 @@ def main(update_offers: bool = False, current_year: bool = True):
         "subtitle": ["A3"],
     }
 
+
     write_output(
         output_dir / output_file,
-        output_sheet,
-        expanded_df,
+        datos,
         stylesheet,
         cell_ranges,
         header_start,
@@ -455,6 +460,18 @@ def main(update_offers: bool = False, current_year: bool = True):
 
 
 if __name__ == "__main__":
-    main()
-    # main(update_offers=True, current_year=False)
-    # main(update_offers=True)
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--update",
+        type=bool,
+        default=False,
+        help="Whether or not to scan the update directory and update the offer data. Setting this to TRUE without the current_year option will update latest offers (2023 in this case)"
+    )
+    parser.add_argument(
+        "--current", 
+        type=bool,
+        default=True,
+        help="Whether to update the current offers, meaning this year's (2023)"
+    )
+    args = parser.parse_args()
+    main(update_offers=args.update, current_year=args.current)
