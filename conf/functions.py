@@ -70,7 +70,6 @@ def auto_format_cell_width(ws):
 
 def create_style(json_file):
     # Load styles from JSON file
-    print(json_file)
     with open(json_file) as file:
         style_data = json.load(file)
 
@@ -112,34 +111,15 @@ def create_style(json_file):
     return style_dict
 
 
-def apply_styles(ws, style_dict, cell_ranges, autofit: bool = True):
+def apply_styles(ws, style_dict: dict, style_ranges: dict, autofit: bool = True):
     # Register named styles to the workbook
     for named_style in style_dict.values():
-        if named_style not in ws.parent.named_styles:
+        if named_style.name not in ws.parent.named_styles:
             ws.parent.add_named_style(named_style)
-
-    # console.print("Applying styles to the output workbook...")
-    # # Apply default style to all cells if it exists
-    # start = perf_counter()
-    # if "default" in style_dict:
-    #     for row in ws.iter_rows():
-    #         # TODO: Progress Bar
-    #         # INFO: Los estilos deberian aplicarse a rangos enteros, mirar!!
-    #         for cell in row:
-    #             cell.style = style_dict["default"]
-    #             if (
-    #                 cell.value
-    #                 and isinstance(cell.value, str)
-    #                 and os.path.exists(cell.value)
-    #             ):
-    #                 cell.hyperlink = cell.value  # set hyperlink
-    #                 cell.style = style_dict["hyperlink"]
-    # end = perf_counter()
-    # console.print(f"Took {end - start}")
 
     console.print(f"Applying named styles...")
     # Apply other styles
-    for style_name, ranges in cell_ranges.items():
+    for style_name, ranges in style_ranges.items():
         if style_name in style_dict:  # Check if the style is defined
             for cell_range in ranges:
                 range_split = cell_range.split(":")
