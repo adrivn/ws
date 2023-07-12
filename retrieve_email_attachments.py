@@ -25,20 +25,20 @@ def retrieve_attachments(file_type: str, top_level_dir: str, number_of_months: i
             filename_pattern = r"^\d{6,8} Pipe 20"
         case "coralhudson", "offers":
             base_dir = Path("N:/CoralHudson/1. AM/8. Wholesale Channel/Ofertas recibidas SVH/")
-            ficheros_existentes = [Path(f).name for f in glob.glob(base_dir.as_posix() + "/Ofertas recibidas SVH/2023/**/[!~$]*.*")]
-            subject_pattern = r"OF CH ",
+            ficheros_existentes = [Path(f).name for f in glob.glob(base_dir.as_posix() + "/2023/**/[!~$]*.*")]
+            subject_pattern = r"OF CH "
             filename_pattern = r"^\d{6,8}[_ ]+OF_"
         case "currentdir", "offers":
             base_dir = Path("./_attachments/offer_files/") 
             ficheros_existentes = [f.name for f in base_dir.rglob("*.*")]
-            subject_pattern = r"OF CH ",
+            subject_pattern = r"OF CH "
             filename_pattern = r"^\d{6,8}[_ ]+OF_"
 
     # Filtrado por fecha
-    time_range = datetime.date.today() - datetime.timedelta(30 * int(number_of_months))
+    time_range = datetime.date.today() - datetime.timedelta(days = 30 * int(number_of_months))
     time_string = time_range.strftime("%m/%d/%Y")
-    console.print(f"Buscando mensajes recibidos desdes el { time_range.strftime('%d/%m/%Y')}")
-    extensions = [".xlsx", ".xls", ".xlsb", ".xlsm"],
+    console.print(f"Buscando mensajes recibidos desdes el {time_string}")
+    extensions = [".xlsx", ".xls", ".xlsb", ".xlsm"]
 
     outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
     inbox = outlook.GetDefaultFolder(6)  # "6" refers to the inbox
@@ -53,7 +53,6 @@ def retrieve_attachments(file_type: str, top_level_dir: str, number_of_months: i
     duplicados = 0
     guardados = 0
     for message in messages:
-        console.print(f"Parsing message: {message.Subject}")
         if re.search(subject_pattern.lower(), message.Subject.lower()):
             message_count += 1
             received_time = message.ReceivedTime
