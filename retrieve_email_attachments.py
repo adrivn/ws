@@ -8,7 +8,7 @@ import win32com.client
 
 console = Console()
 
-def retrieve_attachments(subject_pattern: str, filename_pattern: str, extensions: list, file_type: str, top_level_dir: str, number_of_months: int = 1):
+def retrieve_attachments(file_type: str, top_level_dir: str, number_of_months: int = 1):
     # Conseguir todos los ficheros del directorio
     # Listar todos los ficheros del directorio de destino, y filtrar contra los encontrados
     console.print(f"Checking existing {file_type} files...")
@@ -16,21 +16,29 @@ def retrieve_attachments(subject_pattern: str, filename_pattern: str, extensions
         case "coralhudson", "pipe":
             base_dir = Path("N:/CoralHudson/1. AM/8. Wholesale Channel/")
             ficheros_existentes = [Path(f).name for f in glob.glob("N:/CoralHudson/1. AM/8. Wholesale Channel/WS PIPE*/[!~$]*.*")]
+            subject_pattern = r"\d{6,8} Pipe 20"
+            filename_pattern = r"^\d{6,8} Pipe 20"
         case "currentdir", "pipe":
             base_dir = Path("./_attachments/pipe_files/") 
             ficheros_existentes = [f.name for f in base_dir.rglob("*.*")]
+            subject_pattern = r"\d{6,8} Pipe 20"
+            filename_pattern = r"^\d{6,8} Pipe 20"
         case "coralhudson", "offers":
             base_dir = Path("N:/CoralHudson/1. AM/8. Wholesale Channel/Ofertas recibidas SVH/")
             ficheros_existentes = [Path(f).name for f in glob.glob(base_dir.as_posix() + "/Ofertas recibidas SVH/2023/**/[!~$]*.*")]
+            subject_pattern = r"OF CH ",
+            filename_pattern = r"^\d{6,8}[_ ]+OF_"
         case "currentdir", "offers":
             base_dir = Path("./_attachments/offer_files/") 
             ficheros_existentes = [f.name for f in base_dir.rglob("*.*")]
-
+            subject_pattern = r"OF CH ",
+            filename_pattern = r"^\d{6,8}[_ ]+OF_"
 
     # Filtrado por fecha
     time_range = datetime.date.today() - datetime.timedelta(30 * int(number_of_months))
     time_string = time_range.strftime("%m/%d/%Y")
     console.print(f"Buscando mensajes recibidos desdes el { time_range.strftime('%d/%m/%Y')}")
+    extensions = [".xlsx", ".xls", ".xlsb", ".xlsm"],
 
     outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
     inbox = outlook.GetDefaultFolder(6)  # "6" refers to the inbox
@@ -113,26 +121,8 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    match args.file_type:
-        case "pipe":
-            retrieve_attachments(
-                r"\d{6,8} Pipe 20",
-                r"^\d{6,8} Pipe 20",
-                [".xlsx", ".xls", ".xlsb", ".xlsm"],
-                args.file_type,
-                args.path,
-                args.months
-            )
-        case "offers":
-            retrieve_attachments(
-                r"OF CH ",
-                r"^\d{6,8}[_ ]+OF_",
-                [".xlsx", ".xls", ".xlsb", ".xlsm"],
-                args.file_type,
-                args.path,
-                args.months
-            )
-        case _:
-            raise ValueError(
-                f"You must specify either 'pipe' or 'offers' in the type, because {args.file_type} is not allowed."
-            )
+    retrieve_attachments(
+        args.file_type,
+        args.path,
+        args.months
+    )
