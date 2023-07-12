@@ -1,7 +1,7 @@
 update {table_name} set offer_date = regexp_replace(trim(offer_date), '[\.\/]', '-', 'g') where regexp_matches(offer_date, '[\.\/]') = true;
 update {table_name} set offer_date = strptime(offer_date, '%d-%m-%Y') where regexp_matches(offer_date, '^\d{2}-.');
-update {table_name} set offer_price = regexp_extract(offer_price, '\d+\.?\d+') where regexp_matches(offer_price, '[a-zA-Z\s]');
-update {table_name} set appraisal_price = regexp_extract(appraisal_price, '\d+\.?\d+') where regexp_matches(offer_price, '[a-zA-Z\s]');
+update {table_name} set offer_price = nullif(regexp_extract(offer_price, '\d+\.?\d+'), '') where regexp_matches(offer_price, '[a-zA-Z\s]');
+update {table_name} set appraisal_price = nullif(regexp_extract(appraisal_price, '\d+\.?\d+'), '') where regexp_matches(appraisal_price, '[a-zA-Z\s]');
 update {table_name} set web_price = NULL where regexp_matches(web_price, '\D');
 update {table_name} set sap_price = NULL where regexp_matches(sap_price, '\D');
 update {table_name} set offer_date = strptime(array_extract(regexp_split_to_array(full_path, '\\'), 12)[:9], '%Y%m%d') where regexp_matches(offer_date, '^[345789]') or offer_date is null;

@@ -83,15 +83,20 @@ left join ws_segregated as w
                     then
                         case
                             when publishingchannel_description is null
-                                then 'Wholesale (sold)'
+                                then 'Wholesale'
                             when publishingchannel_description = 'Retail'
-                                then 'Formerly Wholesale'
+                                then 'No longer in Wholesale'
                             else publishingchannel_description
                         end
-                when publishingchannel_description = 'Wholesale'
-                    then 'Wholesale (formerly Retail)'
+                else 
+                    case when publishingchannel_description = 'Wholesale'
+                      then 'Wholesale - from Retail'
+                    end
             end as category
     ) as lat
-where lat.category is not null
+where
+     lat.category = {{placeholder}}
+     and
+     m.updatedcategory != 'Exclusions'
 group by all
 order by 1, 2
