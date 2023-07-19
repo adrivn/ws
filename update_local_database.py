@@ -1,12 +1,13 @@
 import duckdb
-from conf.settings import DIR_PARQUET
+from pathlib import Path
+from conf.settings import DIR_PARQUET, DATABASE_FILE
+
+files = Path(DIR_PARQUET).glob("*.parquet")
 
 def main():
-    bd = duckdb.connect("basedatos_wholesale.db")
-    bd.execute(f"CREATE OR REPLACE TABLE master_tape AS SELECT * FROM parquet_scan('{DIR_PARQUET}/master_tape.parquet')")
-    bd.execute(f"CREATE OR REPLACE TABLE sales2023 AS SELECT * FROM parquet_scan('{DIR_PARQUET}/sales2023.parquet')")
-    bd.execute(f"CREATE OR REPLACE TABLE offers_data AS SELECT * FROM parquet_scan('{DIR_PARQUET}/offers.parquet')")
-    bd.execute(f"CREATE OR REPLACE TABLE ws_segregated AS SELECT * FROM parquet_scan('{DIR_PARQUET}/disaggregated_assets.parquet')")
+    with duckdb.connect(DATABASE_FILE.as_posix()) as bd:
+        for parquet_file in files:
+            bd.execute(f"CREATE OR REPLACE TABLE {parquet_file.stem} AS SELECT * FROM parquet_scan('{parquet_file}')")
 
 if __name__ == "__main__":
     main()

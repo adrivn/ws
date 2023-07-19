@@ -3,13 +3,13 @@
 -- 2. Compromisos
 -- 3. Ofertas antiguas sobre las mismas promos/urs
 
-with offers as (
+with offers_expanded as (
     select
         o.*,
         m.direccion_territorial,
         m.ppa,
         m.lsev_dec19
-    from offers_data as o
+    from offers as o
     left join master_tape as m
         on o.ur_current = m.ur_current
 )
@@ -26,7 +26,7 @@ select
     sum(o.lsev_dec19) as lsev_offer,
     sum(o.ppa) as ppa_offer,
     string_agg(distinct o.direccion_territorial, '|') as dts
-from offers as o
+from offers_expanded as o
 left join sales2023 as s
     on o.ur_current = s.ur_current
 group by all;

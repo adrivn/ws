@@ -5,16 +5,14 @@ import duckdb
 import pandas as pd
 import pendulum as pdl
 import datetime
-import uuid
 import argparse
 from pathlib import Path
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.utils import get_column_letter
 from rich.console import Console
-from conf.settings import database_file, offers_conf, sap_mapping_file, cell_address_file, styles_file
+from conf.settings import offersconf as conf, sap_mapping_file, cell_address_file, styles_file
 from conf.functions import (
     load_json_config,
-    get_missing_values_by_id,
     find_files_included,
     apply_styles,
     create_style,
@@ -24,42 +22,11 @@ from conf.functions import (
 console = Console()
 
 # Instanciar las variables de ficheros, carpetas y otros
-header_start = offers_conf.get("header_start")
-output_sheet = offers_conf.get("sheet_name")
-output_dir = offers_conf.get("output_dir")
-output_file = "".join(["#", offers_conf.get("output_date"), offers_conf.get("output_file")])
 stylesheet = create_style(styles_file)
 
 
-def get_files_in_directory(
-    directory: str, name_structure: list, extensions: list, limit: int = None
-):
-    """
-    Scans a directory for files with a specific name structure and extensions and returns a list of those file paths.
-    """
-    dir_path = Path(directory)
-    with console.status(f"Scanning folder {str(dir_path)} for offers...") as status:
-        files = []
-
-        for pattern in name_structure:
-            for ext in extensions:
-                for file in list(dir_path.glob(f"**/{pattern}{ext}")):
-                    files.append(file)
-                    status.update(f"{len(files)} ficheros leídos")
-
-    if limit:
-        files = files[:limit]
-
-    console.print("Filtering out non-valid files (Excel binary and others)")
-    uniques = set(files)
-    console.print(
-        f"Found a total of {len(uniques)} files in the {str(dir_path)} folder."
-    )
-    return [str(file) for file in uniques]
-
-
 def extract_cell_values(
-    file: str, search_strings: dict, columns_dict: dict, table_sheet: str = "SAP"
+    file: str, search_strings: dict, columns_dict: dict
 ):
     """
     Opens an Excel file and converts the worksheet to a dictionary. It then looks for
@@ -69,13 +36,13 @@ def extract_cell_values(
     Includes the file name in the returned data.
     """
     try:
-        workbook = openpyxl.load_workbook(file, read_only=True, data_only=True)
+        workbook = openpyxl.load_workbook(file, data_only=True)
     except Exception as e:
         console.print(f"Error when loading file {file}. Details: {e}")
         data = {}
         data["read_status"] = "Fail"
         data["read_details"] = str(e)
-        data["full_path"] = os.path.abspath(file)
+        data["full_path"] = file
         data["file_name"] = os.path.basename(file)
         return data
 
@@ -131,12 +98,20 @@ def extract_cell_values(
                 continue
 
     # Load the JSON file for table columns and process table columns if specified
-    if columns_dict and table_sheet:
+    if columns_dict:
+        regex = re.compile(r"\b(?:SAP|^Oferta)\b", re.IGNORECASE)
+        posibles_hojas = list(filter(regex.search, workbook.sheetnames))
+        hojas_sin_imagenes = []
+        for sh in posibles_hojas:
+            console.print(f"Scanning sheet {sh} from file {file}")
+            if not workbook[sh]._images:
+                hojas_sin_imagenes.append(sh)
         try:
-            try:
-                table_sheet = workbook[table_sheet]
-            except KeyError:
-                table_sheet = workbook["Oferta"]
+            hoja_detalle = hojas_sin_imagenes[0]
+        except IndexError:
+            hoja_detalle = posibles_hojas[0]
+        try:
+            table_sheet = workbook[hoja_detalle]
             for col in columns_dict:
                 # Assume the first row contains headers
                 header_row = next(
@@ -178,53 +153,36 @@ def extract_cell_values(
                 # Add the unique values to the output
                 data[columns_dict.get(col)] = unique_values if unique_values else None
         except KeyError as e:
-            console.print(f"Error encontrado: {e}\nFichero causante: {file}")
+            console.print(f"{e}\nFichero causante: {file}")
             data["read_status"] = "Warning"
             data["read_details"] = str(e)
 
     # Cleanup of bad data or strings
-    for label, value in data.items():
-        if label == "contract_deposit" and value == "-":
-            data[label] = 0
-        elif label == "client_description" and value == "NOMBRE":
-            data[label] = None
-        elif label == "offer_date":
+        if data["offer_date"] is not None and not isinstance(data["offer_date"], datetime.datetime):
             try:
-                if isinstance(value, str):
-                    value = pdl.parse(value, strict=False).to_date_string()
-                elif isinstance(value, datetime.datetime):
-                    data[label] = value
+                data["offer_date"] = pdl.parse(data["offer_date"], strict=False).to_date_string()
             except Exception as e:
                 console.print(f"Error al identificar la fecha de la oferta: >> {e}")
-                if data["full_path"].startswith("N:"):
-                    posible_fecha = re.findall("\d{6,8}", data["full_path"])[0]
-                    data[label] = datetime.datetime.strptime(posible_fecha, "%Y%m%d")
-                else:
-                    data[label] = datetime.datetime.strptime(
-                        "".join(data["full_path"].split("\\")[-4:-1]), "%Y%m%d"
-                    )
 
     return data
 
 
 
-## TODO: Usar nombres de fichero por cada script, en variables como FILENAME_OUTPUT
+def load_previous_data(sheet: str = conf.sheet_name, start_row: int = conf.header_start):
 
-def load_previous_data(sheet: str = output_sheet, start_row: int = header_start):
-
-    latest_file_name_pattern = offers_conf.get("output_file")
+    latest_file_name_pattern = conf.output_file
     matching_files = []
-    for f in Path(output_dir).glob("*.*"):
+    for f in Path(conf.output_dir).glob("*.*"):
         if re.match(latest_file_name_pattern, f.name):
             matching_files.append(f)
 
     sorted_files = sorted([f for f in matching_files], key=os.path.getmtime)
     previous_file = sorted_files[-1]
     if os.path.isfile(previous_file):
-        previous_df = pd.read_excel(
+        previous_data = pd.read_excel(
             previous_file, sheet_name=sheet, skiprows=start_row - 1, index_col=0
         )  # load the existing data
-        previous_df.index = previous_df.unique_id
+        #previous_df.index = previous_df.unique_id
     else:
         previous_data = (
             pd.DataFrame()
@@ -235,64 +193,36 @@ def enrich_offers(
     dataframe: pd.DataFrame,
     reuse_latest_file: bool = False
 ):
+    # WARN:
+    # NO hace falta traer TODA la info, todo se puede hacer desde DuckDB
+    # Lo unico en todo caso, es las columnas sueltas del fichero anterior y su ID unico
+    # Que por qué? Porque los INT se convierten a FLOAT y eso JODE las listas/arrays de URs/promos
 
     # Ingest previous data
     if reuse_latest_file:
-        previous_data = load_previous_data(output_sheet)
+        previous_data = load_previous_data(conf.sheet_name)
         joined_df = dataframe.join(previous_data)
     else:
         joined_df = dataframe
 
     console.print("Getting data from portfolio management...")
-    with open("./queries/offers_query.sql", encoding="utf8") as sql_file:
+    with open("./queries/unnest_unique_urs.sql", encoding="utf8") as sql_file:
         query = sql_file.read()
+        improved_query = f"CREATE TEMP TABLE unnested_data AS {query}"
 
-    with duckdb.connect(database_file) as db:
-        offers_data = db.execute(query).df()
-
-
-        expanded_df = (
-            joined_df.reset_index().merge(offers_data, how="left", left_on="offer_id", right_on="offerid")
-            .assign(
-                commercialdev=lambda df_: df_.commercialdev_x.fillna(
-                    df_.commercialdev_y
-                ),
-                jointdev=lambda df_: df_.jointdev_x.fillna(df_.jointdev_y),
-                unique_urs=lambda df_: df_.unique_urs_x.fillna(df_.unique_urs_y),
-            )
-            .drop(
-                columns=[
-                    "offerid",
-                    "commercialdev_x",
-                    "commercialdev_y",
-                    "jointdev_x",
-                    "jointdev_y",
-                    "unique_urs_x",
-                    "unique_urs_y",
-                ]
-            )
-            .sort_values(by=["offer_date"], ascending=False)
-            .set_index("unique_id")
-        )
-
-        split_explode_columns = ["count_urs", "sum_ppa", "sum_lsev"]
-
-        expanded_df[split_explode_columns] = expanded_df.pipe(
-            get_missing_values_by_id, "unique_urs", db, "master_tape", "ur_current"
-        )
-
-    expanded_df = (expanded_df.assign(
-            total_urs=lambda df_: df_.total_urs.fillna(df_.count_urs),
-            ppa=lambda df_: df_.ppa.fillna(df_.sum_ppa),
-            lsev_dec19=lambda df_: df_.lsev_dec19.fillna(df_.sum_lsev),
-        )
-        .drop(columns=split_explode_columns)
-        .reset_index()
-    )
+    with duckdb.connect(conf.db_file) as db:
+        db.execute(improved_query)
+        db.register("tmp_enrich_df", joined_df)
+        expanded_df = db.execute(
+            """select   t.* exclude(unique_urs,commercialdev,jointdev,offer_id,unique_id),
+                        u.*
+            from tmp_enrich_df t 
+            left join unnested_data u 
+            on t.unique_id = u.unique_id"""
+        ).df().set_index("offer_id").reset_index().set_index("unique_id").reset_index()
 
     return expanded_df
 
-# NOTE: Implementar los datos mediante diccionario que contenga {"nombre de hoja": datos a incluir}
 
 def write_output(
     output_file: str,
@@ -381,8 +311,8 @@ def main(update_offers: bool = False, current_year: bool = True):
     # We can do that by listing all the filenames in the Excel and compute the differente vs the found files
 
     # Create the output directory if not exists
-    console.print(f"Creating path to files: {output_dir}")
-    Path(output_dir).mkdir(exist_ok=True)
+    console.print(f"Creating path to files: {conf.output_dir}")
+    Path(conf.output_dir).mkdir(exist_ok=True)
 
     all_duckdb_tables = ["ws_current_offers", "ws_hist_offers"]
 
@@ -397,13 +327,13 @@ def main(update_offers: bool = False, current_year: bool = True):
             folder_pattern = r"20[12][^3]"
             ddb_table_name = all_duckdb_tables[1]
 
-        files = find_files_included(offers_conf.get("directory"), folder_pattern)
+        files = find_files_included(conf.directory, folder_pattern)
+        files_count = len(files)
 
         with console.status(f"Extracting cell values from files...") as status:
             data = []
-            for file in files:
-                file_shortened = file.name
-                status.update(f"Loading data from file: [bold green]{file_shortened}")
+            for idx, file in enumerate(files, start=1):
+                status.update(f"[{idx}/{files_count}] ~ Loading data from file: [bold green]{file}")
                 data.append(
                     extract_cell_values(file, cell_addresses, sap_columns_mapping)
                 )
@@ -411,36 +341,56 @@ def main(update_offers: bool = False, current_year: bool = True):
         console.print("Assembling offer data into a DataFrame...")
         df = (pd.DataFrame(data)
             )
-        console.print("Creating UUIDs")
-        df = df.assign(unique_id=lambda df_: df_.full_path.apply(lambda x: uuid.uuid5(uuid.NAMESPACE_DNS, x)))
         create_ddb_table(
             df,
-            database_file,
+            conf.db_file,
             query_file="./queries/fix_offers.sql",
             table_name=ddb_table_name,
         )
 
     # Get the data from disk sources
-    # TODO: 1) Traer los datos en una sola query, o varias y usar pandas para rellenar los que falten.
-    # 2) Traer solamente los datos que tengan ya en su fichero de ofertas, más los que hayan escrito
-    with duckdb.connect(database_file) as db:
-        df = db.execute(" UNION ".join(["select * from " + t for t in all_duckdb_tables])).df()
+    with duckdb.connect(conf.db_file) as db:
+        if not update_offers:
+            # Fix the data from the offers table, if it hasn't been already
+            with open("./queries/fix_offers.sql", "r", encoding="utf8") as f:
+                queries = f.read().split(";")
 
-    df["unique_id"] = df.unique_id.astype(str)
-    df = df.set_index("unique_id")
+            # Iterate over each query
+            for table in all_duckdb_tables:
+                console.print(f"Fixing data from table {table}...")
+                for query in queries:
+                # Skip empty queries
+                    if not query.strip():
+                        continue
+                    # Replace placeholders with parameters
+                    new_query = query.replace("{table_name}", table)
+                    # Execute query
+                    db.execute(new_query)
+
+        data = db.execute("select table_name from information_schema.tables where regexp_matches(table_name, 'ws_.+_offers')").fetchall()
+        existing_tables = [d[0] for d in data]
+        if len(existing_tables) > 1:
+            df = db.execute(" UNION ".join(["select * from " + t for t in existing_tables])).df()
+        else:
+            df = db.execute("select * from " + existing_tables[0]).df()
+
+    # NOTE: Estamos creando hashes md5 en lugar de UUID, que puede ser mejor para la carga de los datos
+
+    #df = df.set_index("unique_id").convert_dtypes()
+
     # Plug said data into the offers dataframe
     expanded_df = enrich_offers(df)
     no_of_files = expanded_df.shape[0]
-    datos = {output_sheet: expanded_df}
+    datos = {conf.sheet_name: expanded_df}
     # Define your custom formatting schema here
     cell_ranges = {
-        "default": [f"A{header_start}:AZ{header_start + no_of_files + 1}"],
-        "header": [f"A{header_start}:AZ{header_start}"],
+        "default": [f"A{conf.header_start}:AZ{conf.header_start + no_of_files + 1}"],
+        "header": [f"A{conf.header_start}:AZ{conf.header_start}"],
         "data": [
-            f"D{header_start + 1}:G{header_start + no_of_files + 1}",
-            f"AV{header_start + 1}:AW{header_start + no_of_files + 1}",
+            f"D{conf.header_start + 1}:G{conf.header_start + no_of_files + 1}",
+            f"AV{conf.header_start + 1}:AW{conf.header_start + no_of_files + 1}",
         ],
-        "dates": [f"C{header_start + 1}:C{header_start + no_of_files + 1}"],
+        "dates": [f"C{conf.header_start + 1}:C{conf.header_start + no_of_files + 1}"],
         "input": ["B3"],
         "title": ["A1"],
         "subtitle": ["A3"],
@@ -448,12 +398,12 @@ def main(update_offers: bool = False, current_year: bool = True):
 
 
     write_output(
-        output_dir / output_file,
+        conf.get_output_path(),
         datos,
         stylesheet,
         cell_ranges,
-        header_start,
-        output_sheet,
+        conf.header_start,
+        conf.sheet_name,
         # reuse_latest_file=True,
         autofit=False
     )
@@ -463,14 +413,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--update",
-        type=bool,
         default=False,
+        action="store_true",
         help="Whether or not to scan the update directory and update the offer data. Setting this to TRUE without the current_year option will update latest offers (2023 in this case)"
     )
     parser.add_argument(
         "--current", 
-        type=bool,
-        default=True,
+        default=False,
+        action="store_true",
         help="Whether to update the current offers, meaning this year's (2023)"
     )
     args = parser.parse_args()

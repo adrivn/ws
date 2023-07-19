@@ -52,7 +52,6 @@ def run(input_dict):
         else:
             raise TypeError(f"The item {function.__name__} is not callable")
 
-    print("Completed without errors 👍")
     return run(input_dict)
 
 

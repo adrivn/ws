@@ -1,4 +1,4 @@
-from conf.settings import pipe_conf, database_file, styles_file
+from conf.settings import pipeconf as conf, styles_file
 from rich.console import Console
 from conf.functions import create_style, create_custom_chart
 from update_offers import write_output
@@ -9,21 +9,16 @@ import pandas as pd
 console = Console()
 
 # Instanciar las variables de ficheros, carpetas y otros
-header_start = pipe_conf.get("header_start")
-directory = pipe_conf.get("directory")
-output_sheet = pipe_conf.get("sheet_name")
-output_dir = pipe_conf.get("output_dir")
-output_file = "".join(["#", pipe_conf.get("output_date"), pipe_conf.get("output_file")])
-strat_sheet = pipe_conf.get("strats_sheet_name")
+strat_sheet = "Strats"
 stylesheet = create_style(styles_file)
 
-files = [p for p in directory.rglob("*") if p.suffix in [".xlsx", ".xls"]]
+files = [p for p in conf.directory.rglob("*") if p.suffix in [".xlsx", ".xls"]]
 sorted_files = sorted([f for f in files], key=os.path.getmtime)
 latest_pipe_file = sorted_files[-1]
 
 console.print("Obteniendo datos externos...")
 
-db = duckdb.connect(database_file)
+db = duckdb.connect(conf.db_file)
 
 console.print(f"Cargando fichero de pipe: {latest_pipe_file}")
 pipe_data = pd.read_excel(latest_pipe_file, sheet_name="PIPE", skiprows=2, usecols="A:AE")
@@ -69,9 +64,10 @@ merged = (
         LSEV_DELTA_COLUMN=lambda df_: df_[OFFER_PRICE_COLUMN] / df_[LSEV_COLUMN] - 1,
         PPA_DELTA_COLUMN=lambda df_: df_[OFFER_PRICE_COLUMN] / df_[PPA_COLUMN] - 1
     )
+    .rename(columns=lambda c: c.replace("\n", " "))
 )
 
-data = {output_sheet: merged}
+data = {conf.sheet_name: merged}
 
 console.print("Creando strats...")
 
@@ -93,32 +89,31 @@ pivot_table2 = pd.pivot_table(
     PPA_DELTA_COLUMN=lambda df_: (df_[OFFER_PRICE_COLUMN] / df_[PPA_COLUMN] - 1) * 100
 )
 
-header_start = 6
 rows = merged.shape[0]
 main_styles = create_style("./conf/styles.json")
 custom_styles = {
     "default": [
-        f"A{header_start}:AQ{header_start + rows}",
+        f"A{conf.header_start}:AQ{conf.header_start + rows}",
     ],
     "header": [
-        f"A{header_start}:AQ{header_start}",
+        f"A{conf.header_start}:AQ{conf.header_start}",
     ],
     "percents": [
-        f"AP{header_start + 1}:AQ{header_start + rows}",
+        f"AP{conf.header_start + 1}:AQ{conf.header_start + rows}",
     ],
     "dates": [
         "B2",
-        f"N{header_start + 1}:N{header_start + rows}",
-        f"Q{header_start + 1}:R{header_start + rows}",
-        f"V{header_start + 1}:V{header_start + rows}",
-        f"Y{header_start + 1}:Y{header_start + rows}",
-        f"AC{header_start + 1}:AC{header_start + rows}",
-        f"AF{header_start + 1}:AF{header_start + rows}",
-        f"AH{header_start + 1}:AH{header_start + rows}",
+        f"N{conf.header_start + 1}:N{conf.header_start + rows}",
+        f"Q{conf.header_start + 1}:R{conf.header_start + rows}",
+        f"V{conf.header_start + 1}:V{conf.header_start + rows}",
+        f"Y{conf.header_start + 1}:Y{conf.header_start + rows}",
+        f"AC{conf.header_start + 1}:AC{conf.header_start + rows}",
+        f"AF{conf.header_start + 1}:AF{conf.header_start + rows}",
+        f"AH{conf.header_start + 1}:AH{conf.header_start + rows}",
     ],
     "data": [
-        f"H{header_start + 1}:M{header_start + rows}",
-        f"AK{header_start + 1}:AN{header_start + rows}",
+        f"H{conf.header_start + 1}:M{conf.header_start + rows}",
+        f"AK{conf.header_start + 1}:AN{conf.header_start + rows}",
     ],
     "input": ["B3"],
     "title": ["A1"],
@@ -127,17 +122,17 @@ custom_styles = {
 
 # Create a Pandas Excel writer using openpyxl as the engine
 write_output(
-    output_dir / output_file,
+    conf.get_output_path(),
     data,
     main_styles,
     custom_styles,
-    header_start,
-    output_sheet
+    conf.header_start,
+    conf.sheet_name
 )
 
 
-with pd.ExcelWriter(output_dir / output_file, engine="openpyxl", mode="a", if_sheet_exists="overlay") as writer:
-    console.print(f"Añadiendo strats al fichero: {output_file}")
+with pd.ExcelWriter(conf.get_output_path(), engine="openpyxl", mode="a", if_sheet_exists="overlay") as writer:
+    console.print(f"Añadiendo strats al fichero: {conf.get_filename()}")
     # Write the first pivot table to an Excel file, starting at cell B3 of the 'PivotTable' sheet
     pivot_table1.to_excel(writer, sheet_name=strat_sheet, startrow=2, startcol=1)
     # Write the second pivot table to the same Excel file, starting a few rows below the first pivot table
@@ -146,9 +141,9 @@ with pd.ExcelWriter(output_dir / output_file, engine="openpyxl", mode="a", if_sh
 
 data_y_size, data_x_size = pivot_table2.shape
 
-console.print(f"Creando charts al fichero: {output_file}")
+console.print(f"Creando charts al fichero: {conf.get_filename()}")
 create_custom_chart(
-    output_dir / output_file,
+    conf.get_output_path(),
     strat_sheet,
     [3, data_x_size, startrow + 1, startrow + 1 + data_y_size],
     "bar",

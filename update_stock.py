@@ -1,7 +1,6 @@
-from conf.settings import stock_conf, database_file, styles_file
+from conf.settings import stockconf as conf, database_file, styles_file
 from conf.functions import create_style
 from update_offers import write_output
-from datetime import datetime
 from rich.console import Console
 import duckdb
 
@@ -10,18 +9,12 @@ con = Console()
 # TODO: 1) Crear multiples pestañas, una para stock vivo, otra para stock vendido, otra para stock que ya no esta en WS
 
 # Instanciar las variables de ficheros, carpetas y otros
-header_start = stock_conf.get("header_start")
-directory = stock_conf.get("directory")
-output_sheet = stock_conf.get("sheet_name")
-output_dir = stock_conf.get("output_dir")
-output_file = "".join(["#", stock_conf.get("output_date"), stock_conf.get("output_file")])
 stylesheet = create_style(styles_file)
 
 con.print("Accessing data...")
 
 lote_queries = []
-datos = {
-}
+datos = {}
 
 with duckdb.connect(database_file) as db:
     for tipo_agregacion in ["Wholesale", "Wholesale - from Retail", "No longer in Wholesale"]:
@@ -46,22 +39,22 @@ rows = datos["Wholesale"].shape[0]
 
 custom_styles = {
     "default": [
-        f"A{header_start}:AK{header_start + rows}",
+        f"A{conf.header_start}:AK{conf.header_start + rows}",
     ],
     "header": [
-        f"A{header_start}:AK{header_start}",
+        f"A{conf.header_start}:AK{conf.header_start}",
     ],
     "percents": [
-        f"D{header_start + 1}:F{header_start + rows}",
+        f"D{conf.header_start + 1}:F{conf.header_start + rows}",
     ],
     "dates": [
-        f"Q{header_start + 1}:S{header_start + rows}",
+        f"Q{conf.header_start + 1}:S{conf.header_start + rows}",
     ],
     "data": [
-        f"T{header_start + 1}:V{header_start + rows}",
-        f"Y{header_start + 1}:AB{header_start + rows}",
-        f"AD{header_start + 1}:AG{header_start + rows}",
-        f"AI{header_start + 1}:AK{header_start + rows}",
+        f"T{conf.header_start + 1}:V{conf.header_start + rows}",
+        f"Y{conf.header_start + 1}:AB{conf.header_start + rows}",
+        f"AD{conf.header_start + 1}:AG{conf.header_start + rows}",
+        f"AI{conf.header_start + 1}:AK{conf.header_start + rows}",
     ],
     "input": ["B3"],
     "title": ["A1"],
@@ -71,12 +64,12 @@ custom_styles = {
 con.print("Creating Excel output file...")
 
 write_output(
-    output_dir / output_file,
+    conf.get_output_path(),
     datos,
     stylesheet,
     custom_styles,
-    header_start,
-    output_sheet,
+    conf.header_start,
+    conf.sheet_name,
     # reuse_latest_file=True,
     # autofit=False
 )

@@ -1,4 +1,5 @@
 from pathlib import Path
+from dataclasses import dataclass
 import datetime
 
 # Configuracion de carpetas y directorios
@@ -17,30 +18,42 @@ cell_address_file = Path(CONF_DIR / "cell_addresses.json")
 sap_mapping_file = Path(CONF_DIR / "sap_columns_mapping.json")
 styles_file = Path(CONF_DIR / "styles.json")
 
-stock_conf = {
-    "directory": DIR_OFFERS,
-    "output_dir": DIR_OFFERS.parent / ".outputs",
-    "output_date": datetime.datetime.strftime(datetime.datetime.now(), "%Y%m%d"),
-    "output_file": "_WS_Stock.xlsx",
-    "sheet_name": "Wholesale Stock",
-    "header_start": 6,
-}
+@dataclass
+class FileSettings:
+    directory: str
+    output_dir: str
+    output_file: str
+    sheet_name: str
+    header_start: int
+    db_file: str = DATABASE_FILE.as_posix()
 
-offers_conf = {
-    "directory": DIR_OFFERS,
-    "output_dir": DIR_OFFERS.parent / ".outputs",
-    "output_date": datetime.datetime.strftime(datetime.datetime.now(), "%Y%m%d"),
-    "output_file": "_Coral_Homes_Offers_Data.xlsx",
-    "sheet_name": "Offers Data",
-    "header_start": 6,
-}
+    def get_filename(self):
+        return "#" + datetime.datetime.strftime(datetime.datetime.now(), "%Y%m%d") + self.output_file
 
-pipe_conf = {
-    "directory": DIR_PIPE,
-    "output_dir": DIR_PIPE.parent / ".outputs",
-    "output_date": datetime.datetime.strftime(datetime.datetime.now(), "%Y%m%d"),
-    "output_file": "_WS_Pipeline.xlsx",
-    "sheet_name": "Pipeline 2023",
-    "strats_sheet_name": "Strats",
-    "header_start": 6,
-}
+    def get_output_path(self):
+        return self.output_dir / ( "#" + datetime.datetime.strftime(datetime.datetime.now(), "%Y%m%d") + self.output_file )
+
+stockconf = FileSettings(
+    DIR_OFFERS,
+    DIR_OFFERS.parent / ".outputs",
+    "_WS_Stock.xlsx",
+    "Wholesale Stock",
+    6
+)
+
+offersconf = FileSettings(
+    DIR_OFFERS,
+    DIR_OFFERS.parent / ".outputs",
+    "_Coral_Homes_Offers_Data.xlsx",
+    "Offers Data",
+    6
+)
+
+pipeconf = FileSettings(
+    DIR_PIPE,
+    DIR_OFFERS.parent / ".outputs",
+    "_WS_Pipeline.xlsx",
+    "Pipeline 2023",
+    6
+)
+

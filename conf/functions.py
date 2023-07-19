@@ -4,7 +4,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, NamedStyle
 from openpyxl.utils.cell import coordinate_from_string, column_index_from_string
 from openpyxl.utils import get_column_letter
 from rich.console import Console
-import duckdb
+import glob
 import openpyxl
 import json
 import re
@@ -19,44 +19,17 @@ def load_json_config(file):
         return json.load(f)
 
 
-def get_missing_values_by_id(
-    df, column: str, connection: duckdb.DuckDBPyConnection, lookup_source: str, column_id_source: str
-):
-    # Step 1: Split the column into separate rows for each ID
-    df = (
-        df[column]
-        .fillna(0)
-        # .astype(str)
-        # .str.replace("[()]", "", regex=True)
-        # .str.replace("|", ",")
-        .str.split(",")
-        .explode()
-    )
-    # Step 2: Load the DataFrame into DuckDB
-    query = f"""SELECT df.unique_id, 
-    count(*) as count_urs, 
-    sum(v.ppa) as sum_ppa,
-    sum(v.lsev_dec19) as sum_lsev,
-    FROM df
-    LEFT JOIN {lookup_source} v ON df.{column} = v.{column_id_source}
-    GROUP BY 1
-    """
-    with connection as con:
-        con.register("df", df.reset_index())
-        # Step 3: Join the DataFrame with the table containing the corresponding values for each ID
-        # Step 4: Group by the original index and sum the corresponding values
-        result = con.execute(query).df().set_index("unique_id")
-        # Step 5: Return a Series with the sum of corresponding values for each original index
-    return result
-
 
 def find_files_included(directory, include_pattern):
-    p = Path(directory)
-    for subdir in p.iterdir():
+    all_files = []
+    for subdir in directory.iterdir():
         if subdir.is_dir() and re.search(include_pattern, str(subdir)):
-            for file in subdir.glob("**/[!~$]*.xlsx"):
-                if file.is_file():
-                    yield file
+            console.print(f"Scanning offers directory {subdir.as_posix()}...")
+            files = glob.iglob(subdir.as_posix() + "/**/[!~$]*.xlsx", recursive=True)
+            all_files.extend(files)
+    return [f for f in all_files]
+            # for file in files:
+            #     yield file 
 
 def auto_format_cell_width(ws):
     for letter in range(1,ws.max_column):
