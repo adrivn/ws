@@ -42,7 +42,7 @@ def extract_cell_values(
         data = {}
         data["read_status"] = "Fail"
         data["read_details"] = str(e)
-        data["full_path"] = file
+        data["full_path"] = Path(file).as_posix()
         data["file_name"] = os.path.basename(file)
         return data
 
@@ -57,7 +57,7 @@ def extract_cell_values(
         hoja_ficha = hoja_ficha.pop() if hoja_ficha else "FICHA"
         sheet = workbook[hoja_ficha]
     except KeyError as e:
-        data["full_path"] = os.path.abspath(file)
+        data["full_path"] = Path(file).as_posix()
         data["file_name"] = os.path.basename(file)
         data["read_status"] = "Fail"
         data["read_details"] = e
@@ -103,7 +103,6 @@ def extract_cell_values(
         posibles_hojas = list(filter(regex.search, workbook.sheetnames))
         hojas_sin_imagenes = []
         for sh in posibles_hojas:
-            console.print(f"Scanning sheet {sh} from file {file}")
             if not workbook[sh]._images:
                 hojas_sin_imagenes.append(sh)
         try:
@@ -173,16 +172,15 @@ def load_previous_data(sheet: str = conf.sheet_name, start_row: int = conf.heade
     latest_file_name_pattern = conf.output_file
     matching_files = []
     for f in Path(conf.output_dir).glob("*.*"):
-        if re.match(latest_file_name_pattern, f.name):
+        if re.search(latest_file_name_pattern, f.name):
             matching_files.append(f)
 
     sorted_files = sorted([f for f in matching_files], key=os.path.getmtime)
     previous_file = sorted_files[-1]
     if os.path.isfile(previous_file):
         previous_data = pd.read_excel(
-            previous_file, sheet_name=sheet, skiprows=start_row - 1, index_col=0
+            previous_file, sheet_name=sheet, skiprows=start_row - 1
         )  # load the existing data
-        #previous_df.index = previous_df.unique_id
     else:
         previous_data = (
             pd.DataFrame()
@@ -190,20 +188,9 @@ def load_previous_data(sheet: str = conf.sheet_name, start_row: int = conf.heade
     return previous_data
 
 def enrich_offers(
-    dataframe: pd.DataFrame,
+    input_query: str,
     reuse_latest_file: bool = False
 ):
-    # WARN:
-    # NO hace falta traer TODA la info, todo se puede hacer desde DuckDB
-    # Lo unico en todo caso, es las columnas sueltas del fichero anterior y su ID unico
-    # Que por qué? Porque los INT se convierten a FLOAT y eso JODE las listas/arrays de URs/promos
-
-    # Ingest previous data
-    if reuse_latest_file:
-        previous_data = load_previous_data(conf.sheet_name)
-        joined_df = dataframe.join(previous_data)
-    else:
-        joined_df = dataframe
 
     console.print("Getting data from portfolio management...")
     with open("./queries/unnest_unique_urs.sql", encoding="utf8") as sql_file:
@@ -211,15 +198,40 @@ def enrich_offers(
         improved_query = f"CREATE TEMP TABLE unnested_data AS {query}"
 
     with duckdb.connect(conf.db_file) as db:
+        # Ingest previous data
+        db.execute("""set global pandas_analyze_sample=10000""")
         db.execute(improved_query)
-        db.register("tmp_enrich_df", joined_df)
-        expanded_df = db.execute(
-            """select   t.* exclude(unique_urs,commercialdev,jointdev,offer_id,unique_id),
-                        u.*
+
+        if reuse_latest_file:
+            console.print("Opening latest offers file and retrieving additional columns...")
+            previous_data = load_previous_data(conf.sheet_name)
+            db.register("tmp_enrich_df", previous_data)
+            excluded_columns_from_origin = ["unique_urs", "commercialdevs", "jointdevs", "offer_id"]
+        else:
+            db.execute(f"""create temp table tmp_enrich_df as {input_query}""")
+            excluded_columns_from_origin = ["unique_urs", "commercialdev", "jointdev", "offer_id"]
+
+        expanded_df = (db.execute(
+            f"""with all_data as (
+            select  t.* exclude({",".join(excluded_columns_from_origin) if len(excluded_columns_from_origin) > 1 else excluded_columns_from_origin.pop()}),
+                    u.* exclude(unique_id)
             from tmp_enrich_df t 
             left join unnested_data u 
-            on t.unique_id = u.unique_id"""
-        ).df().set_index("offer_id").reset_index().set_index("unique_id").reset_index()
+            on t.unique_id = u.unique_id
+            ),
+            filtered_columns as (
+            select columns(x -> x not similar to '.+:1')
+            from all_data)
+            select * from filtered_columns;
+            ;"""
+        ).df()
+            .set_index("offer_id")
+            .reset_index()
+            .set_index("unique_id")
+            .reset_index()
+            .sort_values(by="offer_date", ascending=False)
+        )
+
 
     return expanded_df
 
@@ -300,13 +312,12 @@ def create_ddb_table(df: pd.DataFrame, db_file: str, **params):
                 query = query.replace("{" + placeholder + "}", value)
 
             # Execute query
-            print(f"Executing query: {query}")
             db.execute(query)
 
     return
 
 
-def main(update_offers: bool = False, current_year: bool = True):
+def main(update_offers: bool = False, current_year: bool = True, reuse: bool = False):
     # TODO: Keep track of all the offers that have already been read in the file
     # We can do that by listing all the filenames in the Excel and compute the differente vs the found files
 
@@ -370,27 +381,29 @@ def main(update_offers: bool = False, current_year: bool = True):
         data = db.execute("select table_name from information_schema.tables where regexp_matches(table_name, 'ws_.+_offers')").fetchall()
         existing_tables = [d[0] for d in data]
         if len(existing_tables) > 1:
-            df = db.execute(" UNION ".join(["select * from " + t for t in existing_tables])).df()
+            query_para_crear_tablas = (" UNION ".join(["select * from " + t for t in existing_tables]))
         else:
-            df = db.execute("select * from " + existing_tables[0]).df()
-
-    # NOTE: Estamos creando hashes md5 en lugar de UUID, que puede ser mejor para la carga de los datos
-
-    #df = df.set_index("unique_id").convert_dtypes()
+            query_para_crear_tablas = ("select * from " + existing_tables[0])
 
     # Plug said data into the offers dataframe
-    expanded_df = enrich_offers(df)
-    no_of_files = expanded_df.shape[0]
+    expanded_df = enrich_offers(query_para_crear_tablas, reuse_latest_file=reuse)
+    no_of_files, no_of_variables = expanded_df.shape
+    columns_start_at = 1
+    first_column_letter, last_column_letter = get_column_letter(columns_start_at), get_column_letter(no_of_variables)
     datos = {conf.sheet_name: expanded_df}
+
     # Define your custom formatting schema here
+    entire_range = f"{first_column_letter}{conf.header_start}:{last_column_letter}{conf.header_start + no_of_files}"
+    header_range = f"{first_column_letter}{conf.header_start}:{last_column_letter}{conf.header_start}"
+
     cell_ranges = {
-        "default": [f"A{conf.header_start}:AZ{conf.header_start + no_of_files + 1}"],
-        "header": [f"A{conf.header_start}:AZ{conf.header_start}"],
+        "default": [entire_range],
+        "header": [header_range],
         "data": [
-            f"D{conf.header_start + 1}:G{conf.header_start + no_of_files + 1}",
-            f"AV{conf.header_start + 1}:AW{conf.header_start + no_of_files + 1}",
+            f"D{conf.header_start + 1}:G{conf.header_start + no_of_files}",
+            f"AV{conf.header_start + 1}:AW{conf.header_start + no_of_files}",
         ],
-        "dates": [f"C{conf.header_start + 1}:C{conf.header_start + no_of_files + 1}"],
+        "dates": [f"C{conf.header_start + 1}:C{conf.header_start + no_of_files}"],
         "input": ["B3"],
         "title": ["A1"],
         "subtitle": ["A3"],
@@ -423,5 +436,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Whether to update the current offers, meaning this year's (2023)"
     )
+    parser.add_argument(
+        "--reuse", 
+        default=False,
+        action="store_true",
+        help="Use the latest offers file as base and bring any custom data columns that may have been added"
+    )
     args = parser.parse_args()
-    main(update_offers=args.update, current_year=args.current)
+    main(update_offers=args.update, current_year=args.current, reuse=args.reuse)
