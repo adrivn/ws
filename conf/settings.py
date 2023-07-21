@@ -31,7 +31,7 @@ class FileSettings:
         return "#" + datetime.datetime.strftime(datetime.datetime.now(), "%Y%m%d") + self.output_file
 
     def get_output_path(self):
-        return self.output_dir / ( "#" + datetime.datetime.strftime(datetime.datetime.now(), "%Y%m%d") + self.output_file )
+        return ( self.output_dir / self.get_filename() )
 
 stockconf = FileSettings(
     DIR_OFFERS,

@@ -1,6 +1,7 @@
 update {table_name} set offer_date = regexp_replace(trim(offer_date), '[\.\/]', '-', 'g') where regexp_matches(offer_date, '[\.\/]') = true;
 update {table_name} set offer_date = strptime(offer_date, '%d-%m-%Y') where regexp_matches(offer_date, '^\d{2}-.');
 update {table_name} set offer_date = strptime(regexp_extract(full_path, '(2\d{7})', 1), '%Y%m%d') where regexp_matches(offer_date, '^[345789]') or offer_date is null;
+update {table_name} set offer_date = make_date(2023,month(offer_date),day(offer_date)) where year(offer_date) > 2023;
 update {table_name} set offer_price = nullif(regexp_extract(offer_price, '\d+\.?\d+'), '') where regexp_matches(offer_price, '[a-zA-Z\s]');
 update {table_name} set appraisal_price = nullif(regexp_extract(appraisal_price, '\d+\.?\d+'), '') where regexp_matches(appraisal_price, '[a-zA-Z\s]');
 update {table_name} set web_price = NULL where regexp_matches(web_price, '\D');

@@ -41,8 +41,15 @@ select  f.unique_id,
         list_aggregate(f.commercialdevs, 'string_agg', ' | ') as commercialdevs,
         list_aggregate(f.jointdevs, 'string_agg', ' | ') as jointdevs,
         f.total_urs,
-        sum(coalesce(m.lsev_dec19,a.lsev_dec19)) as lsevdec19,
-        sum(m.ppa) as ppa
+        nullif(count(m.ur_current) filter (where m.updatedcategory = 'Sale Agreed' and m.offerid = f.offer_id),0) as urs_committed,
+        nullif(sum(m.commitmentprice) filter (where m.updatedcategory = 'Sale Agreed' and m.offerid = f.offer_id),0) as commitment_amount,
+        nullif(count(m.ur_current) filter (where m.updatedcategory = 'Sold Assets' and m.offerid = f.offer_id),0) as urs_sold,
+        nullif(sum(m.saleprice) filter (where m.updatedcategory = 'Sold Assets' and m.offerid = f.offer_id),0) as sold_amount,
+        nullif(count(m.ur_current) filter (where m.updatedcategory in ('Sold Assets', 'Sale Agreed') and m.offerid = f.offer_id),0) as total_urs_sold,
+        nullif(sum(coalesce(m.saleprice,0) + coalesce(m.commitmentprice,0)) filter (where m.updatedcategory in ('Sold Assets', 'Sale Agreed') and m.offerid = f.offer_id),0) as total_proceeds,
+        nullif(sum(coalesce(m.lsev_dec19,a.lsev_dec19)),0) as lsevdec19,
+        nullif(sum(m.ppa),0) as ppa,
+        mode(m.bucketi_ha) as asset_bucket
 from final_piece f
 cross join unnest(f.unique_urs) as r (urs)
 left join master_tape as m
