@@ -51,7 +51,9 @@ select  f.unique_id,
         nullif(sum(coalesce(m.saleprice,0) + coalesce(m.commitmentprice,0)) filter (where m.updatedcategory in ('Sold Assets', 'Sale Agreed') and m.offerid = f.offer_id),0) as total_proceeds,
         nullif(sum(coalesce(m.lsev_dec19,a.lsev_dec19)),0) as lsevdec19,
         nullif(sum(m.ppa),0) as ppa,
-        mode(m.bucketi_ha) as asset_bucket
+        mode(m.bucketi_ha) as asset_bucket,
+        mode(m.city) as province,
+        mode(m.direccion_territorial) as dt,
 from final_piece f
 cross join unnest(f.unique_urs) as r (urs)
 left join master_tape as m

@@ -12,6 +12,7 @@ from openpyxl.utils import get_column_letter
 from rich.console import Console
 from conf.settings import offersconf as conf, sap_mapping_file, cell_address_file, styles_file
 from conf.functions import (
+    create_ddb_table,
     load_json_config,
     find_files_included,
     apply_styles,
@@ -282,39 +283,6 @@ def write_output(
     console.print(f"File saved in: {output_file}")
 
 
-def create_ddb_table(df: pd.DataFrame, db_file: str, **params):
-    console.print(f"Creating table into DuckDB file {db_file}...")
-    table_name = params.get("table_name")
-    query_file = params.get("query_file")
-    with duckdb.connect(db_file) as db:
-        db.register(f"{table_name}_temp", df)
-        if not all([table_name, query_file]):
-            console.print("table_name and query_file must be specified before running.")
-            return
-
-        db.execute(
-            f"create or replace table {table_name} as select * from {table_name}_temp"
-        )
-        # Read file and split queries
-        console.print("Fixing data...")
-        with open(query_file, "r", encoding="utf8") as f:
-            queries = f.read().split(";")
-
-        # Iterate over each query
-        for query in queries:
-            # Skip empty queries
-            if not query.strip():
-                continue
-
-            # Replace placeholders with parameters
-            for placeholder, value in params.items():
-                query = query.replace("{" + placeholder + "}", value)
-
-            # Execute query
-            db.execute(query)
-
-    return
-
 
 def main(update_offers: bool = False, current_year: bool = True, reuse: bool = False, fix_data: bool = True):
     # TODO: Keep track of all the offers that have already been read in the file
@@ -331,7 +299,8 @@ def main(update_offers: bool = False, current_year: bool = True, reuse: bool = F
         cell_addresses = load_json_config(cell_address_file)
         sap_columns_mapping = load_json_config(sap_mapping_file)
         if current_year:
-            folder_pattern = r"2023"
+            current_year = datetime.datetime.now().year
+            folder_pattern = rf"{current_year}"
             ddb_table_name = all_duckdb_tables[0]
         else:
             folder_pattern = r"20[12][^3]"
@@ -360,7 +329,7 @@ def main(update_offers: bool = False, current_year: bool = True, reuse: bool = F
 
     # Get the data from disk sources
     with duckdb.connect(conf.db_file) as db:
-        if not update_offers and fix_data:
+        if (not update_offers and fix_data):
             # Fix the data from the offers table, if it hasn't been already
             with open("./queries/fix_offers.sql", "r", encoding="utf8") as f:
                 queries = f.read().split(";")
@@ -422,12 +391,13 @@ def main(update_offers: bool = False, current_year: bool = True, reuse: bool = F
         "subtitle": ["A3"],
     }
 
+    conf.areas_to_style = cell_ranges
 
     write_output(
         conf.get_output_path(),
         datos,
         stylesheet,
-        cell_ranges,
+        conf.areas_to_style,
         conf.header_start,
         conf.sheet_name,
         # reuse_latest_file=True,
@@ -441,13 +411,13 @@ if __name__ == "__main__":
         "--update",
         default=False,
         action="store_true",
-        help="Whether or not to scan the update directory and update the offer data. Setting this to TRUE without the current_year option will update latest offers (2023 in this case)"
+        help=f"Whether or not to scan the update directory and update the offer data. Setting this to TRUE without the current_year option will update latest offers"
     )
     parser.add_argument(
         "--current", 
         default=False,
         action="store_true",
-        help="Whether to update the current offers, meaning this year's (2023)"
+        help="Whether to scan the current year offers directory and then update the file with the new information."
     )
     parser.add_argument(
         "--reuse", 
