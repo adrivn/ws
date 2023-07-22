@@ -1,9 +1,12 @@
-from pathlib import Path, WindowsPath
+from pathlib import WindowsPath
 from openpyxl.chart import BarChart, LineChart, Reference
 from openpyxl.styles import Font, PatternFill, Alignment, NamedStyle
 from openpyxl.utils.cell import coordinate_from_string, column_index_from_string
 from openpyxl.utils import get_column_letter
 from rich.console import Console
+from pandas import DataFrame
+import time
+import duckdb
 import glob
 import openpyxl
 import json
@@ -135,3 +138,46 @@ def create_custom_chart(workbook_path: WindowsPath, target_sheet: str, data: lis
     workbook.save(workbook_path)
     return
 
+
+def create_ddb_table(df: DataFrame, db_file: str, **params):
+    console.print(f"Creating table into DuckDB file {db_file}...")
+    table_name = params.get("table_name")
+    query_file = params.get("query_file")
+    with duckdb.connect(db_file) as db:
+        db.register(f"{table_name}_temp", df)
+        if not all([table_name, query_file]):
+            console.print("table_name and query_file must be specified before running.")
+            return
+
+        db.execute(
+            f"create or replace table {table_name} as select * from {table_name}_temp"
+        )
+        # Read file and split queries
+        console.print("Fixing data...")
+        with open(query_file, "r", encoding="utf8") as f:
+            queries = f.read().split(";")
+
+        # Iterate over each query
+        for query in queries:
+            # Skip empty queries
+            if not query.strip():
+                continue
+
+            # Replace placeholders with parameters
+            for placeholder, value in params.items():
+                query = query.replace("{" + placeholder + "}", value)
+
+            # Execute query
+            db.execute(query)
+
+    return
+
+
+def timing(f):
+    def wrap(*args, **kwargs):
+        start_time = time.perf_counter()
+        ret = f(*args, **kwargs)
+        end_time = time.perf_counter() - start_time
+        console.print(f"Total time elapsed: {end_time:0.3f} seconds")
+        return ret
+    return wrap
