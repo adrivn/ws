@@ -1,0 +1,5 @@
+duckdb==0.8.1
+rich
+openpyxl
+pandas
+pendulum

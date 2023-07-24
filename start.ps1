@@ -1,8 +1,14 @@
+# Git config
+$gitRepo = "https://github.com/adrivn/ws"
 # The path to your Python virtual environment
 $venvPath = "~/Envs/main"
 
 # The paths to your Python scripts
 $scriptPath = "./start.py"
+
+# Update repo before running
+Write-Host "Fetching updates..."
+git pull
 
 # Activate the virtual environment
 Write-Host "Activating Python virtual environment..."
