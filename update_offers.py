@@ -168,7 +168,7 @@ def extract_cell_values(
 
 
 
-def load_previous_data(sheet: str = conf.sheet_name, start_row: int = conf.header_start):
+def load_previous_data(sheet: str = conf.sheet_name, start_row: int = conf.header_start) -> pd.DataFrame | bool:
 
     latest_file_name_pattern = conf.output_file
     matching_files = []
@@ -179,14 +179,12 @@ def load_previous_data(sheet: str = conf.sheet_name, start_row: int = conf.heade
     sorted_files = sorted([f for f in matching_files], key=os.path.getmtime)
     previous_file = sorted_files[-1]
     if os.path.isfile(previous_file):
-        previous_data = pd.read_excel(
+        return pd.read_excel(
             previous_file, sheet_name=sheet, skiprows=start_row - 1
         )  # load the existing data
     else:
-        previous_data = (
-            pd.DataFrame()
-        )  # create an empty DataFrame for the case where no previous data exists
-    return previous_data
+        # return False for the case where no previous data exists
+        return False
 
 def enrich_offers(
     input_query: str,
@@ -206,8 +204,12 @@ def enrich_offers(
         if reuse_latest_file:
             console.print("Opening latest offers file and retrieving additional columns...")
             previous_data = load_previous_data(conf.sheet_name)
-            db.register("tmp_enrich_df", previous_data)
-            excluded_columns_from_origin = ["unique_urs", "commercialdevs", "jointdevs", "offer_id"]
+            if previous_data:
+                db.register("tmp_enrich_df", previous_data)
+                excluded_columns_from_origin = ["unique_urs", "commercialdevs", "jointdevs", "offer_id"]
+            else:
+                db.execute(f"""create temp table tmp_enrich_df as {input_query}""")
+                excluded_columns_from_origin = ["unique_urs", "commercialdev", "jointdev", "offer_id"]
         else:
             db.execute(f"""create temp table tmp_enrich_df as {input_query}""")
             excluded_columns_from_origin = ["unique_urs", "commercialdev", "jointdev", "offer_id"]

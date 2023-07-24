@@ -36,6 +36,8 @@ def display_menu(input_dict):
                 function_to_run(**kwargs_dict)
             else:
                 function_to_run()
+
+            display_menu(ws_menu)
         else:
             print("Invalid option, please try again.")
     else:
