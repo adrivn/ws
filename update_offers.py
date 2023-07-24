@@ -305,7 +305,8 @@ def main(update_offers: bool = False, current_year: bool = True, reuse: bool = F
             folder_pattern = rf"{current_year}"
             ddb_table_name = all_duckdb_tables[0]
         else:
-            folder_pattern = r"20[12][^3]"
+            end_year = str(current_year)[-1]
+            folder_pattern = rf"20[12][^{end_year}]"
             ddb_table_name = all_duckdb_tables[1]
 
         files = find_files_included(conf.directory, folder_pattern)
