@@ -3,3 +3,5 @@ rich
 openpyxl
 pandas
 pendulum
+pywin32
+XlsxWriter
