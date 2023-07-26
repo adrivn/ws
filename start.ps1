@@ -1,7 +1,7 @@
 # Git config
 $gitRepo = "https://github.com/adrivn/ws"
 # The path to your Python virtual environment
-$venvPath = "~/Envs/main"
+$venvPath = "$HOME\Envs\main"
 
 # The paths to your Python scripts
 $scriptPath = "./start.py"
@@ -22,7 +22,7 @@ else {
   python -m venv $venvPath
   Write-Host "Activating Python virtual environment..."
   & $venvPath\Scripts\Activate.ps1
-  python install -r conf/requirements.txt
+  & pip install -r conf/requirements.txt
 }
 
 # Check if the virtual environment is activated
