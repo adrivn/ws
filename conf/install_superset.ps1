@@ -14,7 +14,7 @@ else {
   Write-Host "Activating Python virtual environment..."
   & $venvPath\Scripts\Activate.ps1
   Write-Host "Installing superset requirements..."
-  & pip install -r conf/supersetreqs.txt
+  & pip install -r supersetreqs.txt
 }
 
 # Check if the virtual environment is activated
