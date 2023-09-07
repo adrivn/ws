@@ -1,7 +1,7 @@
 duckdb==0.8.1
 rich
 openpyxl
-pandas
+pandas==2.0.3
 pendulum
 pywin32
 XlsxWriter
