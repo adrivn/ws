@@ -1,5 +1,7 @@
 # The path to your Python virtual environment
 $venvPath = "$HOME\Envs\dataviz"
+$scriptPath = $MyInvocation.MyCommand.Path
+$rootPath = Split-Path $scriptPath -Parent
 
 # Check if virtual environment exists, and creates one if not
 if (Test-Path $venvPath\Scripts\Activate.ps1 -PathType Leaf) {
@@ -14,7 +16,7 @@ else {
   Write-Host "Activating Python virtual environment..."
   & $venvPath\Scripts\Activate.ps1
   Write-Host "Installing superset requirements..."
-  & pip install -r supersetreqs.txt
+  & pip install -r $rootPath/supersetreqs.txt
 }
 
 # Check if the virtual environment is activated
@@ -24,11 +26,11 @@ if ($env:VIRTUAL_ENV -eq $null) {
 }
 
 Write-Host "Setting config variables"
-set FLASK_APP=superset
-cp superset_config.py $venvPath/superset_config.py
+& set FLASK_APP=superset
+& cp $rootPath/superset_config.py $venvPath/superset_config.py
 Write-Host "Initializing database"
-cd $venvPath & cd Scripts & superset db upgrade 
+& cd $venvPath & cd Scripts & superset db upgrade 
 Write-Host "Creating admin user"
-superset fab create-admin
+& superset fab create-admin
 Write-Host "Initializing platform"
-superset init
+& superset init

@@ -1,6 +1,3 @@
-# The paths to your Python scripts
-$runSuperset = "superset run -p 8088 --with-threads --reload --debugger"
-
 # The path to your Python virtual environment
 $venvPath = "$HOME\Envs\dataviz"
 
@@ -18,4 +15,4 @@ else {
 
 # Loop through each script and execute it
 Write-Host "Starting Superset (dashboard tool)"
-$runSuperset
+& superset run -p 8088 --with-threads --reload --debugger
