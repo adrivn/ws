@@ -15,7 +15,7 @@ SECRET_KEY = 'E50)]V.P20QwXOq5@m=e:pQ/qYDpzuaQG0t(?w?U+..57,*Rm}w3r+7qCoOJyl[x'
 # superset metadata (slices, connections, tables, dashboards, ...).
 # Note that the connection information to connect to the datasources
 # you want to explore are managed directly in the web UI
-#SQLALCHEMY_DATABASE_URI = 'sqlite:////path/to/database.db'
+SQLALCHEMY_DATABASE_URI = 'sqlite:///N:/CoralHudson/1. AM/8. Wholesale Channel/.code/supersetdb.db'
 
 # Flask-WTF flag for CSRF
 WTF_CSRF_ENABLED = True
