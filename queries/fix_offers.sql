@@ -1,7 +1,7 @@
 update {table_name} set offer_date = regexp_replace(trim(offer_date), '[\.\/]', '-', 'g') where regexp_matches(offer_date, '[\.\/]') = true;
 update {table_name} set offer_date = strptime(offer_date, '%d-%m-%Y') where regexp_matches(offer_date, '^\d{2}-.');
 update {table_name} set offer_date = strptime(regexp_extract(full_path, '(2\d{7})', 1), '%Y%m%d') where regexp_matches(offer_date, '^[345789]') or offer_date is null;
-update {table_name} set offer_date = make_date(2023,month(offer_date),day(offer_date)) where year(offer_date) > 2023;
+update {table_name} set offer_date = make_date(2023,month(cast(offer_date as date)),day(cast(offer_date as date))) where year(cast(offer_date as date)) > 2023;
 update {table_name} set offer_price = nullif(regexp_extract(offer_price, '\d+\.?\d+'), '') where regexp_matches(offer_price, '[a-zA-Z\s]');
 update {table_name} set appraisal_price = nullif(regexp_extract(appraisal_price, '\d+\.?\d+'), '') where regexp_matches(appraisal_price, '[a-zA-Z\s]');
 update {table_name} set web_price = NULL where regexp_matches(web_price, '\D');
@@ -13,6 +13,7 @@ update {table_name} set offer_id = regexp_replace(trim(offer_id), '[\n\t\W]', ''
 update {table_name} set offer_id = NULL where len(offer_id) < 6 or regexp_matches(offer_id, '[a-zA-Z]');
 update {table_name} set contract_deposit = 0 where contract_deposit = '-';
 update {table_name} set client_description = NULL where client_description = 'NOMBRE';
+update ws_current_offers set jointdev = regexp_replace(jointdev, '-', '');
 alter table {table_name} alter column offer_date set data type date;
 alter table {table_name} alter column offer_price set data type double;
 alter table {table_name} alter column appraisal_price set data type double;
