@@ -73,7 +73,7 @@ select
     sum(m.nbv) filter (where m.updatedcategory = 'Remaining Stock') as remaining_nbv
 
 from master_tape as m
-left join ws_segregated as w
+left join disaggregated_assets as w
     on m.ur_current = w.unidad_registral,
     lateral(
         select

@@ -1,4 +1,4 @@
-from conf.settings import stockconf as conf, database_file, styles_file
+from conf.settings import stockconf as conf, styles_file
 from conf.functions import create_style
 from update_offers import write_output
 from rich.console import Console
@@ -16,7 +16,7 @@ con.print("Accessing data...")
 lote_queries = []
 datos = {}
 
-with duckdb.connect(database_file) as db:
+with duckdb.connect(conf.db_file) as db:
     for tipo_agregacion in ["Wholesale", "Wholesale - from Retail", "No longer in Wholesale"]:
     # Iterate over each query
         with open("./queries/stock_query.sql", encoding="utf8") as sql_file:
