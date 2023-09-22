@@ -34,6 +34,12 @@ with duckdb.connect(database_file) as db:
         sheet_data = {tipo_agregacion: query_as_df}
         datos |= sheet_data
 
+    con.print("Creating/updating stock table in database...")
+    with open("./queries/stock_data.sql", encoding="utf8") as stock_table_query:
+        query = stock_table_query.read()
+    db.execute(f"CREATE OR REPLACE TABLE stock AS {query}")
+    con.print("✅ Done!")
+
 rows = datos["Wholesale"].shape[0]
 
 
