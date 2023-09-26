@@ -57,19 +57,12 @@ ws_menu = {
         1: ("Obtener ofertas desde el email", blank_runner, {"script": "./retrieve_email_attachments.py", "other_params": ["--file_type", "offers", "--months", "1"] }),
         2: ("Obtener pipeline desde el email", blank_runner, {"script": "./retrieve_email_attachments.py", "other_params": ["--file_type", "pipe", "--months", "1"] }),
         3: ("Crear / Actualizar fichero ofertas", {
-            1: ("Escanear ofertas nuevas y crear fichero", blank_runner, {"script": "./update_offers.py", "other_params": ["--update", "--current"] }),
+            1: ("Escanear todas las ofertas año en curso y crear fichero", blank_runner, {"script": "./update_offers.py", "other_params": ["--update", "--current"] }),
             2: ("Crear nuevo fichero (con base en el ultimo)", blank_runner, {"script": "./update_offers.py", "other_params": ["--fix", "--reuse"] }),
             3: ("Crear nuevo fichero", blank_runner, {"script": "./update_offers.py"}),
-            4: ("Añadir strats", blank_runner, {"script": "./add_strats.py", "other_params": ["--file", "offers"] }),
         }),
-        4: ("Crear / Actualizar fichero pipeline", {
-            1: ("Crear / Actualizar fichero pipeline", blank_runner, {"script": "./update_pipe.py"}),
-            2: ("Añadir strats", blank_runner, {"script": "./add_strats.py", "other_params": ["--file", "pipeline"] }),
-        }),
-        5: ("Crear / Actualizar fichero stock", {
-            1: ("Crear / Actualizar fichero stock", blank_runner, {"script": "./update_stock.py" }),
-            2: ("Añadir strats", blank_runner, {"script": "./add_strats.py", "other_params": ["--file", "stock"] }),
-        }),
+        4: ("Crear / Actualizar fichero pipeline", blank_runner, {"script": "./update_pipe.py"}),
+        5: ("Crear / Actualizar fichero stock", blank_runner, {"script": "./update_stock.py" }),
 }
 
 

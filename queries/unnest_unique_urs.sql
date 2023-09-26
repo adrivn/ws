@@ -3,13 +3,6 @@ with all_offers as (
   union all
   select * from ws_current_offers w2
 ),
--- que queremos traer del tape de ofertas semanal??
--- tenemos que traerlo por offer_id?
--- NOTE:
--- no, hay que traer los agregados por offer_id pero no lincar via offer_id, me explico?
--- los conteos de urs_per_offers_table y urs_per_file son IGUALES de modo que todo está ok
--- WARN: Error en ws_hist_offers porque no existe, hay que meter un algo para que solo pille las disponibles,
--- tal vez un regex que pille las ws_
 enriched_offers as (
   select  a.*,
           array_agg(DISTINCT o.ur_current) AS all_urs_pot,

@@ -6,8 +6,6 @@ import duckdb
 
 con = Console()
 
-# TODO: 1) Crear multiples pestañas, una para stock vivo, otra para stock vendido, otra para stock que ya no esta en WS
-
 # Instanciar las variables de ficheros, carpetas y otros
 stylesheet = create_style(styles_file)
 

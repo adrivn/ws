@@ -1,4 +1,3 @@
--- TODO: Discriminar por tipo de estrategias
 select
     lat.asset_id,
     case

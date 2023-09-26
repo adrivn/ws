@@ -13,7 +13,7 @@ update {table_name} set offer_id = regexp_replace(trim(offer_id), '[\n\t\W]', ''
 update {table_name} set offer_id = NULL where len(offer_id) < 6 or regexp_matches(offer_id, '[a-zA-Z]');
 update {table_name} set contract_deposit = 0 where contract_deposit = '-';
 update {table_name} set client_description = NULL where client_description = 'NOMBRE';
-update ws_current_offers set jointdev = regexp_replace(jointdev, '-', '');
+update {table_name} set jointdev = regexp_replace(jointdev, '-', '');
 alter table {table_name} alter column offer_date set data type date;
 alter table {table_name} alter column offer_price set data type double;
 alter table {table_name} alter column appraisal_price set data type double;

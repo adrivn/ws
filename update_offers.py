@@ -312,7 +312,7 @@ def main(update_offers: bool = False, current_year: bool = True, reuse: bool = F
         files = find_files_included(conf.directory, folder_pattern)
         files_count = len(files)
 
-        with console.status(f"Extracting cell values from files...") as status:
+        with console.status("Extracting cell values from files...") as status:
             data = []
             for idx, file in enumerate(files, start=1):
                 status.update(f"[{idx}/{files_count}] ~ Loading data from file: [bold green]{file}")

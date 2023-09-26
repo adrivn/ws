@@ -10,9 +10,6 @@ import argparse
 from conf.functions import (create_style, apply_styles)
 from conf.settings import (FileSettings, offersconf, stockconf, pipeconf, QUERIES_DIR)
 
-# WARN: Deberíamos admitir una clase FileSettings como input, y de ahi sacar los parametros
-# Como strat_sheet, output_file, etc.
-
 configuration = None
 styles_first_row = 3
 styles_first_column = 2
