@@ -58,13 +58,11 @@ left join disaggregated_assets as w
             coalesce(w.unidad_registral, nullif(commercialdev, 0), nullif(jointdev, 0), ur_current)::int as asset_id,
             -- NOTE: Usar el "CHANNEL" para determinar la pertenencia a un canal u otro (operaciones)
             -- Asimismo, el canal de venta SEGURO para mayorista es.. Mayorista. Todo lo demás va a Retail.
-            case when ch.CHANNEL is null then
-              case when m.salechannel = 'Mayorista' then 'Wholesale' else 'Retail' end
-            else ch.CHANNEL
+            case when m.salechannel = 'Mayorista' then 'Wholesale' else
+              case when ch.CHANNEL is null then 'Retail' else ch.CHANNEL end
             end as category,
-            case when ch.CHANNEL is null then
-              case when m.salechannel is not null then 'Sale Channel (Reporting)' end
-            else 'Operations Tape'
+            case when m.salechannel = 'Mayorista' then 'Sale Channel (Reporting)' else
+              case when ch.CHANNEL is null then 'Sale Channel (Reporting)' else 'Operations Tape' end
             end as source_label,
             -- case
                 -- when label is not null
