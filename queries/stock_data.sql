@@ -1,89 +1,219 @@
-select
+WITH rankings AS (
+    SELECT
+        m.ur_current,
+        m.city AS province_svh,
+        p.*,
+        jaro_similarity(p.province, m.city) score,
+        rank() over (puntuacion) AS rank
+    FROM
+        iso3166_provincias p,
+        master_tape m WINDOW puntuacion AS (
+            PARTITION by m.ur_current
+            ORDER BY
+                score DESC
+        )
+    ORDER BY
+        1,
+        4 DESC
+)
+SELECT
     lat.asset_id,
-    case
-        when lat.asset_id = m.commercialdev
-            then 'Promo Comercial'
-        when lat.asset_id = m.jointdev
-            then 'Promo Conjunta'
-        else 'Unidad Registral'
-    end as tipo_agrupacion,
-    lat.category as categories,
+    CASE
+        WHEN lat.asset_id = m.commercialdev THEN 'Promo Comercial'
+        WHEN lat.asset_id = m.jointdev THEN 'Promo Conjunta'
+        ELSE 'Unidad Registral'
+    END AS tipo_agrupacion,
+    lat.category AS categories,
     lat.source_label,
-    trim(mode(w.estrategia)) as strategy,
-    (count(*) filter (where m.updatedcategory = 'Sold Assets') * 1.0 / count(*)) as percent_sold,
-    (count(*) filter (where m.updatedcategory = 'Sale Agreed') * 1.0 / count(*)) as percent_committed,
-    (count(*) filter (where m.updatedcategory = 'Remaining Stock') * 1.0 / count(*)) as percent_stock,
-  -- WARN: Seguro que tenemos que usar moda? En lugar de un listado de URs/promos unicas?
-    array_to_string(list_distinct(array_agg(trim(m.ur_current::int))), ' | ') as ur_current,
-    array_to_string(list_distinct(array_agg(trim(m.commercialdev::int))), ' | ') as commercialdev,
-    array_to_string(list_distinct(array_agg(trim(m.jointdev::int))), ' | ') as jointdev,
-    trim(mode(m.address)) as address,
-    trim(mode(m.town)) as municipality,
-    trim(mode(m.city)) as province,
-    array_to_string(list_distinct(array_agg(trim(m.cadastralreference))), ' | ') as cadastralreference,
-    trim(mode(m.direccion_territorial)) as dts,
-    sum(coalesce(m.currentsaleprice, m.last_listing_price)) as listed_price,
-    max(m.last_listing_date) as latest_listing_date,
-    max(m.saledate) as latest_sale_date,
-    max(m.commitmentdate) as latest_commitment_date,
-    sum(m.val2020) as valuation2020,
-    sum(m.val2021) as valuation2021,
-    sum(m.val2022) as valuation2022,
-    count(*) as total_urs,
-    count(*) filter (where m.updatedcategory = 'Sold Assets') as sold_urs,
-    sum(m.saleprice) filter (where m.updatedcategory = 'Sold Assets') as sold_amount,
-    sum(m.lsev_dec19) filter (where m.updatedcategory = 'Sold Assets') as sold_lsev,
-    sum(m.ppa) filter (where m.updatedcategory = 'Sold Assets') as sold_ppa,
-    sum(m.nbv) filter (where m.updatedcategory = 'Sold Assets') as sold_nbv,
-    count(*) filter (where m.updatedcategory = 'Sale Agreed') as committed_urs,
-    sum(m.commitmentprice) filter (where m.updatedcategory = 'Sale Agreed') as committed_amount,
-    sum(m.lsev_dec19) filter (where m.updatedcategory = 'Sale Agreed') as committed_lsev,
-    sum(m.ppa) filter (where m.updatedcategory = 'Sale Agreed') as committed_ppa,
-    sum(m.nbv) filter (where m.updatedcategory = 'Sale Agreed') as committed_nbv,
-    count(*) filter (where m.updatedcategory = 'Remaining Stock') as remaining_urs,
-    sum(m.lsev_dec19) filter (where m.updatedcategory = 'Remaining Stock') as remaining_lsev,
-    sum(m.ppa) filter (where m.updatedcategory = 'Remaining Stock') as remaining_ppa,
-    sum(m.nbv) filter (where m.updatedcategory = 'Remaining Stock') as remaining_nbv
-
-from master_tape as m
-left join (select UNIDAD_REGISTRAL, CHANNEL, SNAPSHOT_DATE FROM channels_historic as outie 
-            where SNAPSHOT_DATE = (SELECT MAX(SNAPSHOT_DATE)
-                                    FROM channels_historic as innie WHERE
-                                    innie.UNIDAD_REGISTRAL=outie.UNIDAD_REGISTRAL)) ch 
-on m.ur_current = ch.UNIDAD_REGISTRAL
-left join disaggregated_assets as w
-    on m.ur_current = w.unidad_registral,
+    trim(MODE(w.estrategia)) AS strategy,
+    (
+        count(*) filter (
+            WHERE
+                m.updatedcategory = 'Sold Assets'
+        ) * 1.0 / count(*)
+    ) AS percent_sold,
+    (
+        count(*) filter (
+            WHERE
+                m.updatedcategory = 'Sale Agreed'
+        ) * 1.0 / count(*)
+    ) AS percent_committed,
+    (
+        count(*) filter (
+            WHERE
+                m.updatedcategory = 'Remaining Stock'
+        ) * 1.0 / count(*)
+    ) AS percent_stock,
+    array_to_string(
+        list_distinct(array_agg(trim(m.ur_current :: int))),
+        ' | '
+    ) AS ur_current,
+    array_to_string(
+        list_distinct(array_agg(trim(m.commercialdev :: int))),
+        ' | '
+    ) AS commercialdev,
+    array_to_string(
+        list_distinct(array_agg(trim(m.jointdev :: int))),
+        ' | '
+    ) AS jointdev,
+    trim(MODE(m.address)) AS address,
+    trim(MODE(m.town)) AS municipality,
+    trim(MODE(m.city)) AS province,
+    array_to_string(
+        list_distinct(array_agg(trim(m.cadastralreference))),
+        ' | '
+    ) AS cadastralreference,
+    trim(MODE(m.direccion_territorial)) AS dts,
+    sum(
+        coalesce(m.currentsaleprice, m.last_listing_price)
+    ) AS listed_price,
+    max(m.last_listing_date) AS latest_listing_date,
+    max(m.saledate) AS latest_sale_date,
+    max(m.commitmentdate) AS latest_commitment_date,
+    sum(m.val2020) AS valuation2020,
+    sum(m.val2021) AS valuation2021,
+    sum(m.val2022) AS valuation2022,
+    count(*) AS total_urs,
+    count(*) filter (
+        WHERE
+            m.updatedcategory = 'Sold Assets'
+    ) AS sold_urs,
+    sum(m.saleprice) filter (
+        WHERE
+            m.updatedcategory = 'Sold Assets'
+    ) AS sold_amount,
+    sum(m.lsev_dec19) filter (
+        WHERE
+            m.updatedcategory = 'Sold Assets'
+    ) AS sold_lsev,
+    sum(m.ppa) filter (
+        WHERE
+            m.updatedcategory = 'Sold Assets'
+    ) AS sold_ppa,
+    sum(m.nbv) filter (
+        WHERE
+            m.updatedcategory = 'Sold Assets'
+    ) AS sold_nbv,
+    count(*) filter (
+        WHERE
+            m.updatedcategory = 'Sale Agreed'
+    ) AS committed_urs,
+    sum(m.commitmentprice) filter (
+        WHERE
+            m.updatedcategory = 'Sale Agreed'
+    ) AS committed_amount,
+    sum(m.lsev_dec19) filter (
+        WHERE
+            m.updatedcategory = 'Sale Agreed'
+    ) AS committed_lsev,
+    sum(m.ppa) filter (
+        WHERE
+            m.updatedcategory = 'Sale Agreed'
+    ) AS committed_ppa,
+    sum(m.nbv) filter (
+        WHERE
+            m.updatedcategory = 'Sale Agreed'
+    ) AS committed_nbv,
+    count(*) filter (
+        WHERE
+            m.updatedcategory = 'Remaining Stock'
+    ) AS remaining_urs,
+    sum(m.lsev_dec19) filter (
+        WHERE
+            m.updatedcategory = 'Remaining Stock'
+    ) AS remaining_lsev,
+    sum(m.ppa) filter (
+        WHERE
+            m.updatedcategory = 'Remaining Stock'
+    ) AS remaining_ppa,
+    sum(m.nbv) filter (
+        WHERE
+            m.updatedcategory = 'Remaining Stock'
+    ) AS remaining_nbv,
+    MODE(r.code) AS province_code,
+    MODE(r.region_code) AS region_code,
+    MODE(ch.Y_GOOGLE) AS latitude,
+    MODE(ch.X_GOOGLE) AS longitude,
+    m.updated_at
+FROM
+    master_tape AS m
+    LEFT JOIN rankings r ON r.ur_current = m.ur_current
+    LEFT JOIN (
+        SELECT
+            UNIDAD_REGISTRAL,
+            CHANNEL,
+            X_GOOGLE,
+            Y_GOOGLE,
+            SNAPSHOT_DATE
+        FROM
+            (
+                SELECT
+                    *
+                FROM
+                    channels_historic
+                UNION
+                ALL
+                SELECT
+                    load_date,
+                    UNIDAD_REGISTRAL,
+                    X_GOOGLE,
+                    Y_GOOGLE,
+                    CHANNEL
+                FROM
+                    latest_operations
+            ) AS outie
+        WHERE
+            SNAPSHOT_DATE = (
+                SELECT
+                    MAX(SNAPSHOT_DATE)
+                FROM
+                    channels_historic AS innie
+                WHERE
+                    innie.UNIDAD_REGISTRAL = outie.UNIDAD_REGISTRAL
+            )
+    ) ch ON m.ur_current = ch.UNIDAD_REGISTRAL
+    LEFT JOIN disaggregated_assets AS w ON m.ur_current = w.unidad_registral,
     lateral(
-        select
-            coalesce(w.unidad_registral, nullif(commercialdev, 0), nullif(jointdev, 0), ur_current)::int as asset_id,
-            -- NOTE: Usar el "CHANNEL" para determinar la pertenencia a un canal u otro (operaciones)
-            -- Asimismo, el canal de venta SEGURO para mayorista es.. Mayorista. Todo lo demás va a Retail.
-            case when m.salechannel = 'Mayorista' then 'Wholesale' else
-              case when ch.CHANNEL is null then 'Retail' else ch.CHANNEL end
-            end as category,
-            case when m.salechannel = 'Mayorista' then 'Sale Channel (Reporting)' else
-              case when ch.CHANNEL is null then 'Sale Channel (Reporting)' else 'Operations Tape' end
-            end as source_label,
+        SELECT
+            coalesce(
+                w.unidad_registral,
+                nullif(m.commercialdev, 0),
+                nullif(m.jointdev, 0),
+                m.ur_current
+            ) :: int AS asset_id,
+            CASE
+                WHEN m.salechannel IS NOT NULL THEN CASE
+                    WHEN m.salechannel = 'Mayorista' THEN 'Wholesale'
+                    ELSE 'Retail'
+                END
+                ELSE coalesce(ch.CHANNEL, 'Retail')
+            END AS category,
+            CASE
+                WHEN m.salechannel IS NOT NULL THEN 'Sale Channel (Reporting)'
+                ELSE 'Operations Tape'
+            END AS source_label,
             -- case
-                -- when label is not null
-                --     then
-                --         case
-                --             when publishingchannel_description is null
-                --                 then 'Wholesale'
-                --             when publishingchannel_description = 'Retail'
-                --                 then 'No longer in Wholesale'
-                --             else publishingchannel_description
-                --         end
-                -- else 
-                --     case when publishingchannel_description = 'Wholesale'
-                --       then 'Wholesale - from Retail'
-                --     end
+            -- when label is not null
+            --     then
+            --         case
+            --             when publishingchannel_description is null
+            --                 then 'Wholesale'
+            --             when publishingchannel_description = 'Retail'
+            --                 then 'No longer in Wholesale'
+            --             else publishingchannel_description
+            --         end
+            -- else
+            --     case when publishingchannel_description = 'Wholesale'
+            --       then 'Wholesale - from Retail'
+            --     end
             -- end as category
-    ) as lat
-where
-     m.updatedcategory != 'Exclusions'
-and
-    -- category in ( 'Wholesale', 'Wholesale - from Retail', 'No longer in Wholesale' )
-    category == 'Wholesale'
-group by all
-order by 1, 2
+    ) AS lat
+WHERE
+    m.updatedcategory != 'Exclusions'
+    AND lat.category = 'Wholesale'
+    AND r.rank = 1
+GROUP BY
+    ALL
+ORDER BY
+    1,
+    2
