@@ -132,8 +132,8 @@ SELECT
     ) AS remaining_nbv,
     MODE(r.code) AS province_code,
     MODE(r.region_code) AS region_code,
-    MODE(ch.Y_GOOGLE) AS latitude,
-    MODE(ch.X_GOOGLE) AS longitude,
+    AVG(CAST(ll.Y_GOOGLE AS DOUBLE)) AS latitude,
+    AVG(CAST(ll.X_GOOGLE AS DOUBLE)) AS longitude,
     m.updated_at
 FROM
     master_tape AS m
@@ -141,9 +141,34 @@ FROM
     LEFT JOIN (
         SELECT
             UNIDAD_REGISTRAL,
+            MODE(X_GOOGLE) AS X_GOOGLE,
+            MODE(Y_GOOGLE) AS Y_GOOGLE
+        FROM
+            (
+                SELECT
+                    *
+                FROM
+                    channels_historic
+                UNION
+                ALL
+                SELECT
+                    load_date,
+                    UNIDAD_REGISTRAL,
+                    X_GOOGLE,
+                    Y_GOOGLE,
+                    CHANNEL
+                FROM
+                    latest_operations
+            ) AS coordinates
+        WHERE
+            X_GOOGLE IS NOT NULL
+        GROUP BY
+            1
+    ) ll ON m.ur_current = ll.UNIDAD_REGISTRAL
+    LEFT JOIN (
+        SELECT
+            UNIDAD_REGISTRAL,
             CHANNEL,
-            X_GOOGLE,
-            Y_GOOGLE,
             SNAPSHOT_DATE
         FROM
             (
