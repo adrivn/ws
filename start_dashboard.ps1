@@ -1,5 +1,11 @@
 # The path to your Python virtual environment
 $venvPath = "$HOME\Envs\dataviz"
+$scriptPath = $MyInvocation.MyCommand.Path
+$rootPath = Split-Path $scriptPath -Parent
+
+Write-Host "Fetching updates..."
+& cp $rootPath/conf/superset_config.py $venvPath/superset_config.py
+& git pull
 
 # Check if virtual environment exists, and creates one if not
 if (Test-Path $venvPath\Scripts\Activate.ps1 -PathType Leaf) {

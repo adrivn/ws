@@ -15,28 +15,33 @@ lote_queries = []
 datos = {}
 
 with duckdb.connect(conf.db_file) as db:
-    for tipo_agregacion in ["Wholesale", "Wholesale - from Retail", "No longer in Wholesale"]:
-    # Iterate over each query
-        with open("./queries/stock_query.sql", encoding="utf8") as sql_file:
-            query = sql_file.read()
-            if not query.strip():
-                continue
-
-        # Replace placeholders with parameters
-        query = query.replace("{{placeholder}}", "'" + tipo_agregacion + "'")
-
-        # Execute query
-        print(f"Filtering for channel: {tipo_agregacion}")
-        query_as_df = db.execute(query).df()
-        lote_queries.append(query_as_df)
-        sheet_data = {tipo_agregacion: query_as_df}
-        datos |= sheet_data
+    # for tipo_agregacion in ["Wholesale", "Wholesale - from Retail", "No longer in Wholesale"]:
+    # # Iterate over each query
+    #     with open("./queries/stock_query.sql", encoding="utf8") as sql_file:
+    #         query = sql_file.read()
+    #         if not query.strip():
+    #             continue
+    #
+    #     # Replace placeholders with parameters
+    #     query = query.replace("{{placeholder}}", "'" + tipo_agregacion + "'")
+    #
+    #     # Execute query
+    #     print(f"Filtering for channel: {tipo_agregacion}")
+    #     query_as_df = db.execute(query).df()
+    #     lote_queries.append(query_as_df)
+    #     sheet_data = {tipo_agregacion: query_as_df}
+    #     datos |= sheet_data
 
     con.print("Creating/updating stock table in database...")
     with open("./queries/stock_data.sql", encoding="utf8") as stock_table_query:
         query = stock_table_query.read()
     db.execute(f"CREATE OR REPLACE TABLE stock AS {query}")
     con.print("✅ Done!")
+    # Añadido hasta que podamos partir el perimetro correctamente (ex-WS, etc.)
+    query_as_df = db.execute(query).df()
+    lote_queries.append(query_as_df)
+    sheet_data = {"Wholesale": query_as_df}
+    datos |= sheet_data
 
 rows = datos["Wholesale"].shape[0]
 
