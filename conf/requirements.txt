@@ -1,7 +1,7 @@
-duckdb==0.8.1
-rich
-openpyxl
-pandas==2.0.3
-pendulum
-pywin32
-XlsxWriter
+duckdb==0.9.1
+rich==13.6.0
+openpyxl==3.1.2
+pandas==2.1.1
+pendulum==2.1.2
+pywin32==306
+XlsxWriter==3.1.8

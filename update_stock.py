@@ -1,8 +1,10 @@
-from conf.settings import stockconf as conf, styles_file
-from conf.functions import create_style
-from update_offers import write_output
-from rich.console import Console
 import duckdb
+from rich.console import Console
+
+from conf.functions import create_style
+from conf.settings import stockconf as conf
+from conf.settings import styles_file
+from update_offers import write_output
 
 con = Console()
 
@@ -38,8 +40,8 @@ with duckdb.connect(conf.db_file) as db:
     db.execute(f"CREATE OR REPLACE TABLE stock AS {query}")
     con.print("✅ Done!")
     # Añadido hasta que podamos partir el perimetro correctamente (ex-WS, etc.)
-    query_as_df = db.execute(query).df()
-    lote_queries.append(query_as_df)
+    query_as_df = db.sql("select * from stock").df()
+    query_as_df.updated_at = query_as_df.updated_at.dt.tz_localize(None)
     sheet_data = {"Wholesale": query_as_df}
     datos |= sheet_data
 
@@ -48,22 +50,23 @@ rows = datos["Wholesale"].shape[0]
 
 custom_styles = {
     "default": [
-        f"A{conf.header_start}:AK{conf.header_start + rows}",
+        f"A{conf.header_start}:AQ{conf.header_start + rows}",
     ],
     "header": [
-        f"A{conf.header_start}:AK{conf.header_start}",
+        f"A{conf.header_start}:AQ{conf.header_start}",
     ],
     "percents": [
-        f"D{conf.header_start + 1}:F{conf.header_start + rows}",
+        f"F{conf.header_start + 1}:H{conf.header_start + rows}",
     ],
     "dates": [
-        f"Q{conf.header_start + 1}:S{conf.header_start + rows}",
+        f"R{conf.header_start + 1}:T{conf.header_start + rows}",
+        f"AQ{conf.header_start + 1}:AQ{conf.header_start + rows}",
     ],
     "data": [
-        f"T{conf.header_start + 1}:V{conf.header_start + rows}",
-        f"Y{conf.header_start + 1}:AB{conf.header_start + rows}",
-        f"AD{conf.header_start + 1}:AG{conf.header_start + rows}",
-        f"AI{conf.header_start + 1}:AK{conf.header_start + rows}",
+        f"U{conf.header_start + 1}:W{conf.header_start + rows}",
+        f"Z{conf.header_start + 1}:AC{conf.header_start + rows}",
+        f"AE{conf.header_start + 1}:AH{conf.header_start + rows}",
+        f"AJ{conf.header_start + 1}:AL{conf.header_start + rows}",
     ],
     "input": ["B3"],
     "title": ["A1"],
@@ -83,3 +86,5 @@ write_output(
     # autofit=False
 )
 # agg_data.to_excel(DIR_OUTPUT / f"#{now_filename}_Wholesale_Stock.xlsx", index=False, sheet_name=f"Wholesale Stock {now_sheet}")
+
+

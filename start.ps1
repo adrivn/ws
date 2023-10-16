@@ -31,7 +31,17 @@ if ($env:VIRTUAL_ENV -eq $null) {
     exit
 }
 
-# Loop through each script and execute it
+# Upgrade packages based on requirements.txt
+Write-Host "Upgrading packages based on requirements.txt..."
+& pip install --upgrade -r conf/requirements.txt
+
+# Check if the upgrade was successful
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Failed to upgrade packages based on requirements.txt. Exiting..."
+    exit
+}
+
+# Run the script
 Write-Host "Running Python script at $scriptPath..."
 python $scriptPath
 if ($LASTEXITCODE -ne 0) {

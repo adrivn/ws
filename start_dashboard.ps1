@@ -19,6 +19,17 @@ else {
   exit
 }
 
+# Upgrade packages based on requirements.txt
+Write-Host "Upgrading packages based on requirements.txt..."
+& pip install --upgrade -r conf/supersetreqs.txt
+
+# Check if the upgrade was successful
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Failed to upgrade packages based on requirements.txt. Exiting..."
+    exit
+}
+
+
 # Loop through each script and execute it
 Write-Host "Starting Superset (dashboard tool)"
 & superset run -p 8088 --with-threads --reload --debugger
