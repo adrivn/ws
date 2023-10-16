@@ -4,7 +4,9 @@ $gitRepo = "https://github.com/adrivn/ws"
 $venvPath = "$HOME\Envs\main"
 
 # The paths to your Python scripts
-$scriptPath = "./start.py"
+$scriptName = "start.py"
+$scriptPath = $MyInvocation.MyCommand.Path
+$rootPath = Split-Path $scriptPath -Parent
 
 # Update repo before running
 Write-Host "Fetching updates..."
@@ -19,10 +21,10 @@ if (Test-Path $venvPath\Scripts\Activate.ps1 -PathType Leaf) {
 }
 else {
   Write-Host "No virtual environment found. Creating a new one in: $venvPath"
-  python -m venv $venvPath
+  python -m venv $venvPath 2>$null
   Write-Host "Activating Python virtual environment..."
   & $venvPath\Scripts\Activate.ps1
-  & pip install -r conf/requirements.txt
+  & pip install -r $rootPath/conf/requirements.txt 2>$null
 }
 
 # Check if the virtual environment is activated
@@ -33,7 +35,7 @@ if ($env:VIRTUAL_ENV -eq $null) {
 
 # Upgrade packages based on requirements.txt
 Write-Host "Upgrading packages based on requirements.txt..."
-& pip install --upgrade -r conf/requirements.txt
+& pip install --upgrade -r $rootPath/conf/requirements.txt 2>$null
 
 # Check if the upgrade was successful
 if ($LASTEXITCODE -ne 0) {
@@ -42,8 +44,8 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # Run the script
-Write-Host "Running Python script at $scriptPath..."
-python $scriptPath
+Write-Host "Running Python script at $rootPath..."
+python $rootPath/$scriptName
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Failed to execute Python script at $scriptPath. Exiting..."
     exit

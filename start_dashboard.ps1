@@ -12,7 +12,7 @@ if (Test-Path $venvPath\Scripts\Activate.ps1 -PathType Leaf) {
   Write-Host "Found virtual environment in $venvPath"
   # Activate the virtual environment
   Write-Host "Activating Python virtual environment..."
-  & $venvPath\Scripts\Activate.ps1
+  & $venvPath\Scripts\Activate.ps1 2>$null
 }
 else {
   Write-Host "No virtual environment found. Please install all requirements before continuing."
@@ -21,7 +21,7 @@ else {
 
 # Upgrade packages based on requirements.txt
 Write-Host "Upgrading packages based on requirements.txt..."
-& pip install --upgrade -r conf/supersetreqs.txt
+& pip install --upgrade -r $rootPath/conf/supersetreqs.txt 2>$null
 
 # Check if the upgrade was successful
 if ($LASTEXITCODE -ne 0) {
