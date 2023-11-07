@@ -1,23 +1,27 @@
-import re
+import argparse
+import datetime
 import os
-import openpyxl
+import re
+from pathlib import Path
+
 import duckdb
+import openpyxl
 import pandas as pd
 import pendulum as pdl
-import datetime
-import argparse
-from pathlib import Path
-from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.utils import get_column_letter
+from openpyxl.utils.dataframe import dataframe_to_rows
 from rich.console import Console
-from conf.settings import offersconf as conf, sap_mapping_file, cell_address_file, styles_file
+
 from conf.functions import (
-    create_ddb_table,
-    load_json_config,
-    find_files_included,
     apply_styles,
+    create_ddb_table,
     create_style,
+    find_files_included,
+    load_json_config,
 )
+from conf.settings import cell_address_file
+from conf.settings import offersconf as conf
+from conf.settings import sap_mapping_file, styles_file
 
 # Instanciar la consola bonita
 console = Console()
@@ -26,9 +30,7 @@ console = Console()
 stylesheet = create_style(styles_file)
 
 
-def extract_cell_values(
-    file: str, search_strings: dict, columns_dict: dict
-):
+def extract_cell_values(file: str, search_strings: dict, columns_dict: dict):
     """
     Opens an Excel file and converts the worksheet to a dictionary. It then looks for
     specific strings, moves to the relative cell addresses based on both x and y offsets,
@@ -157,19 +159,26 @@ def extract_cell_values(
             data["read_status"] = "Warning"
             data["read_details"] = str(e)
 
-    # Cleanup of bad data or strings
-        if data["offer_date"] is not None and not isinstance(data["offer_date"], datetime.datetime):
+        # Cleanup of bad data or strings
+        if data["offer_date"] is not None and not isinstance(
+            data["offer_date"], datetime.datetime
+        ):
             try:
-                data["offer_date"] = pdl.parse(data["offer_date"], strict=False).to_date_string()
+                data["offer_date"] = pdl.parse(
+                    data["offer_date"], strict=False
+                ).to_date_string()
             except Exception as e:
-                console.print(f"Error al identificar la fecha de la oferta: >> {e}")
+                console.print(
+                    f"Error al identificar la fecha de la oferta: >> {e}. Fichero: {file}"
+                )
+                data["offer_date"] = None
 
     return data
 
 
-
-def load_previous_data(sheet: str = conf.sheet_name, start_row: int = conf.header_start) -> pd.DataFrame | bool:
-
+def load_previous_data(
+    sheet: str = conf.sheet_name, start_row: int = conf.header_start
+) -> pd.DataFrame | bool:
     latest_file_name_pattern = conf.output_file
     matching_files = []
     for f in Path(conf.output_dir).glob("*.*"):
@@ -186,11 +195,8 @@ def load_previous_data(sheet: str = conf.sheet_name, start_row: int = conf.heade
         # return False for the case where no previous data exists
         return False
 
-def enrich_offers(
-    input_query: str,
-    reuse_latest_file: bool = False
-):
 
+def enrich_offers(input_query: str, reuse_latest_file: bool = False):
     console.print("Getting data from portfolio management...")
     with open("./queries/unnest_unique_urs.sql", encoding="utf8") as sql_file:
         query = sql_file.read()
@@ -202,38 +208,56 @@ def enrich_offers(
         db.execute(improved_query)
 
         if reuse_latest_file:
-            console.print("Opening latest offers file and retrieving additional columns...")
+            console.print(
+                "Opening latest offers file and retrieving additional columns..."
+            )
             previous_data = load_previous_data(conf.sheet_name)
             if previous_data:
                 db.register("tmp_enrich_df", previous_data)
-                excluded_columns_from_origin = ["unique_urs", "commercialdevs", "jointdevs", "offer_id"]
+                excluded_columns_from_origin = [
+                    "unique_urs",
+                    "commercialdevs",
+                    "jointdevs",
+                    "offer_id",
+                ]
             else:
                 db.execute(f"""create temp table tmp_enrich_df as {input_query}""")
-                excluded_columns_from_origin = ["unique_urs", "commercialdev", "jointdev", "offer_id"]
+                excluded_columns_from_origin = [
+                    "unique_urs",
+                    "commercialdev",
+                    "jointdev",
+                    "offer_id",
+                ]
         else:
             db.execute(f"""create temp table tmp_enrich_df as {input_query}""")
-            excluded_columns_from_origin = ["unique_urs", "commercialdev", "jointdev", "offer_id"]
+            excluded_columns_from_origin = [
+                "unique_urs",
+                "commercialdev",
+                "jointdev",
+                "offer_id",
+            ]
 
         # Create enriched table, for later usage
-        db.execute(f"""
+        db.execute(
+            f"""
             create or replace table offers_enriched_table as (
             with all_data as (
             select  t.* exclude({",".join(excluded_columns_from_origin) if len(excluded_columns_from_origin) > 1 else excluded_columns_from_origin.pop()}),
                     u.* exclude(unique_id)
-            from tmp_enrich_df t 
-            left join unnested_data u 
+            from tmp_enrich_df t
+            left join unnested_data u
             on t.unique_id = u.unique_id
             ),
             filtered_columns as (
             select columns(x -> x not similar to '.+:1')
             from all_data)
             select * from filtered_columns);
-            """)
+            """
+        )
 
         expanded_df = db.execute(
             """select unique_id, offer_id, * exclude(unique_id, offer_id) from offers_enriched_table order by offer_date desc"""
         ).df()
-
 
     return expanded_df
 
@@ -245,7 +269,7 @@ def write_output(
     style_ranges: str,
     start_row: int,
     title: str,
-    **kwargs
+    **kwargs,
 ):
     """
     Writes the data to an output Excel workbook.
@@ -265,11 +289,16 @@ def write_output(
         sheet.cell(column=2, row=2, value=datetime.datetime.now())
         sheet.cell(column=1, row=3, value="Created by:")
         sheet.cell(column=2, row=3, value=os.environ.get("USERNAME"))
-        sheet.cell(column=1, row=(start_row - 1), value=f"=COUNTA(A{start_row + 1}:A{start_row + total_rows})")
-
+        sheet.cell(
+            column=1,
+            row=(start_row - 1),
+            value=f"=COUNTA(A{start_row + 1}:A{start_row + total_rows})",
+        )
 
         # Writing data from dataframe to sheet starting from start_row
-        for i, row in enumerate(dataframe_to_rows(dataframe, index=False, header=True), 1):
+        for i, row in enumerate(
+            dataframe_to_rows(dataframe, index=False, header=True), 1
+        ):
             for j, cell in enumerate(row, 1):
                 cell = str(tuple(cell)) if isinstance(cell, list) else cell
                 sheet.cell(row=i + start_row - 1, column=j, value=cell)
@@ -280,13 +309,17 @@ def write_output(
         filters.ref = f"A{start_row}:{last_column_as_letter}{total_rows}"
         sheet.freeze_panes = f"B{start_row + 1}"
 
-    console.print(f"Saving output file")
+    console.print("Saving output file")
     workbook.save(output_file)
     console.print(f"File saved in: {output_file}")
 
 
-
-def main(update_offers: bool = False, current_year: bool = True, reuse: bool = False, fix_data: bool = True):
+def main(
+    update_offers: bool = False,
+    current_year: bool = True,
+    reuse: bool = False,
+    fix_data: bool = True,
+):
     # TODO: Keep track of all the offers that have already been read in the file
     # We can do that by listing all the filenames in the Excel and compute the differente vs the found files
 
@@ -315,14 +348,15 @@ def main(update_offers: bool = False, current_year: bool = True, reuse: bool = F
         with console.status("Extracting cell values from files...") as status:
             data = []
             for idx, file in enumerate(files, start=1):
-                status.update(f"[{idx}/{files_count}] ~ Loading data from file: [bold green]{file}")
+                status.update(
+                    f"[{idx}/{files_count}] ~ Loading data from file: [bold green]{file}"
+                )
                 data.append(
                     extract_cell_values(file, cell_addresses, sap_columns_mapping)
                 )
         # Use the 'data' variable to create a DataFrame structure which will be manipulated/modified
         console.print("Assembling offer data into a DataFrame...")
-        df = (pd.DataFrame(data)
-            )
+        df = pd.DataFrame(data)
         create_ddb_table(
             df,
             conf.db_file,
@@ -332,7 +366,7 @@ def main(update_offers: bool = False, current_year: bool = True, reuse: bool = F
 
     # Get the data from disk sources
     with duckdb.connect(conf.db_file) as db:
-        if (not update_offers and fix_data):
+        if not update_offers and fix_data:
             # Fix the data from the offers table, if it hasn't been already
             with open("./queries/fix_offers.sql", "r", encoding="utf8") as f:
                 queries = f.read().split(";")
@@ -341,7 +375,7 @@ def main(update_offers: bool = False, current_year: bool = True, reuse: bool = F
             for table in all_duckdb_tables:
                 console.print(f"Fixing data from table {table}...")
                 for query in queries:
-                # Skip empty queries
+                    # Skip empty queries
                     if not query.strip():
                         continue
                     # Replace placeholders with parameters
@@ -349,32 +383,36 @@ def main(update_offers: bool = False, current_year: bool = True, reuse: bool = F
                     # Execute query
                     db.execute(new_query)
 
-        data = db.execute("select table_name from information_schema.tables where regexp_matches(table_name, 'ws_.+_offers')").fetchall()
+        data = db.execute(
+            "select table_name from information_schema.tables where regexp_matches(table_name, 'ws_.+_offers')"
+        ).fetchall()
         existing_tables = [d[0] for d in data]
         if len(existing_tables) > 1:
-            query_para_crear_tablas = (" UNION ".join(
+            query_para_crear_tablas = " UNION ".join(
                 [
-                    """select * 
+                    """select *
                     replace(
                     --list_aggregate(string_to_array(regexp_replace(address, '(\[|\])', '', 'g'), ','), 'string_agg', ' | ') as address,
                     list_aggregate(string_to_array(regexp_replace(asset_type, '(\[|\])', '', 'g'), ','), 'string_agg', ' | ') as asset_type,
                     --list_aggregate(string_to_array(regexp_replace(asset_location, '(\[|\])', '', 'g'), ','), 'string_agg', ' | ') as asset_location
-                    ) 
-                    from 
-                    """ + t
+                    )
+                    from
+                    """
+                    + t
                     for t in existing_tables
                 ]
-            ))
-        else:
-            query_para_crear_tablas = (
-                "select * from " + existing_tables[0]
             )
+        else:
+            query_para_crear_tablas = "select * from " + existing_tables[0]
 
     # Plug said data into the offers dataframe
     expanded_df = enrich_offers(query_para_crear_tablas, reuse_latest_file=reuse)
     no_of_files, no_of_variables = expanded_df.shape
     columns_start_at = 1
-    first_column_letter, last_column_letter = get_column_letter(columns_start_at), get_column_letter(no_of_variables)
+    first_column_letter, last_column_letter = (
+        get_column_letter(columns_start_at),
+        get_column_letter(no_of_variables),
+    )
     datos = {conf.sheet_name: expanded_df}
 
     # Define your custom formatting schema here
@@ -404,7 +442,7 @@ def main(update_offers: bool = False, current_year: bool = True, reuse: bool = F
         conf.header_start,
         conf.sheet_name,
         # reuse_latest_file=True,
-        autofit=False
+        autofit=False,
     )
 
 
@@ -414,25 +452,30 @@ if __name__ == "__main__":
         "--update",
         default=False,
         action="store_true",
-        help=f"Whether or not to scan the update directory and update the offer data. Setting this to TRUE without the current_year option will update latest offers"
+        help="Whether or not to scan the update directory and update the offer data. Setting this to TRUE without the current_year option will update latest offers",
     )
     parser.add_argument(
-        "--current", 
+        "--current",
         default=False,
         action="store_true",
-        help="Whether to scan the current year offers directory and then update the file with the new information."
+        help="Whether to scan the current year offers directory and then update the file with the new information.",
     )
     parser.add_argument(
-        "--reuse", 
+        "--reuse",
         default=False,
         action="store_true",
-        help="Use the latest offers file as base and bring any custom data columns that may have been added"
+        help="Use the latest offers file as base and bring any custom data columns that may have been added",
     )
     parser.add_argument(
-        "--fix", 
+        "--fix",
         default=False,
         action="store_true",
-        help="Use the latest offers file as base and bring any custom data columns that may have been added"
+        help="Use the latest offers file as base and bring any custom data columns that may have been added",
     )
     args = parser.parse_args()
-    main(update_offers=args.update, current_year=args.current, reuse=args.reuse, fix_data=args.fix)
+    main(
+        update_offers=args.update,
+        current_year=args.current,
+        reuse=args.reuse,
+        fix_data=args.fix,
+    )
