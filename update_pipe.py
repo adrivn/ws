@@ -1,11 +1,14 @@
-from conf.settings import pipeconf as conf, styles_file
-from rich.console import Console
-from conf.functions import create_style, create_ddb_table
-from update_offers import write_output
-import re
 import os
+import re
+
 import duckdb
 import pandas as pd
+from rich.console import Console
+
+from conf.functions import create_ddb_table, create_style
+from conf.settings import pipeconf as conf
+from conf.settings import styles_file
+from update_offers import write_output
 
 console = Console()
 
@@ -13,7 +16,11 @@ console = Console()
 strat_sheet = "Strats"
 stylesheet = create_style(styles_file)
 
-files = [p for p in conf.directory.rglob("*") if p.suffix in [".xlsx", ".xls"]]
+files = [
+    p
+    for p in conf.directory.rglob("*")
+    if p.suffix in [".xlsx", ".xls"] and not p.name.startswith("~")
+]
 sorted_files = sorted([f for f in files], key=os.path.getmtime)
 latest_pipe_file = sorted_files[-1]
 
@@ -21,9 +28,10 @@ console.print("Obteniendo datos externos...")
 
 
 console.print(f"Cargando fichero de pipe: {latest_pipe_file}")
-pipe_data = (
-            pd.read_excel(latest_pipe_file, sheet_name="PIPE", skiprows=2, usecols="A:AE")
-        .rename(columns=lambda c: re.sub("[^A-Za-z0-9 ]", "", c).strip().replace(" ", "_").lower())
+pipe_data = pd.read_excel(
+    latest_pipe_file, sheet_name="PIPE", skiprows=2, usecols="A:AE"
+).rename(
+    columns=lambda c: re.sub("[^A-Za-z0-9 ]", "", c).strip().replace(" ", "_").lower()
 )
 
 console.print("Guardando tabla de pipe en base de datos...")
@@ -31,7 +39,9 @@ console.print("Guardando tabla de pipe en base de datos...")
 with open("./queries/pipe_aggregates.sql", encoding="utf8") as sql_file:
     query = sql_file.read()
 
-create_ddb_table(pipe_data, conf.db_file, table_name="pipeline", query_file="./queries/fix_pipe.sql")
+create_ddb_table(
+    pipe_data, conf.db_file, table_name="pipeline", query_file="./queries/fix_pipe.sql"
+)
 
 with duckdb.connect(conf.db_file) as db:
     agg_data_offers = db.execute(query).df()
@@ -48,16 +58,13 @@ cols_to_use = agg_data_offers.columns.difference(pipe_data.columns)
 console.print("Agregando datos y completando pipe con datos externos...")
 
 # Convert the DataFrame to an XlsxWriter Excel object.
-merged = (
-    pd.merge(
-        pipe_data,
-        agg_data_offers[cols_to_use],
-        left_on=PK_PIPE,
-        right_on=PK_AGG_DATA,
-        how="left",
-    )
-    .drop(columns=[PK_AGG_DATA])
-)
+merged = pd.merge(
+    pipe_data,
+    agg_data_offers[cols_to_use],
+    left_on=PK_PIPE,
+    right_on=PK_AGG_DATA,
+    how="left",
+).drop(columns=[PK_AGG_DATA])
 
 data = {conf.sheet_name: merged}
 
@@ -101,6 +108,5 @@ write_output(
     main_styles,
     custom_styles,
     conf.header_start,
-    conf.sheet_name
+    conf.sheet_name,
 )
-

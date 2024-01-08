@@ -2,6 +2,7 @@
 $venvPath = "$HOME\Envs\dataviz"
 $scriptPath = $MyInvocation.MyCommand.Path
 $rootPath = Split-Path $scriptPath -Parent
+$boolUpdate = $true
 
 Write-Host "Fetching updates..."
 & cp $rootPath/conf/superset_config.py $venvPath/superset_config.py
@@ -19,14 +20,15 @@ else {
   exit
 }
 
+if ($boolUpdate) {
 # Upgrade packages based on requirements.txt
-Write-Host "Upgrading packages based on requirements.txt..."
-& pip install --upgrade -r $rootPath/conf/supersetreqs.txt 2>$null
-
+  Write-Host "Upgrading packages based on requirements.txt..."
+  & pip install --upgrade -r $rootPath/conf/supersetreqs.txt 2>$null
 # Check if the upgrade was successful
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Failed to upgrade packages based on requirements.txt. Exiting..."
-    exit
+  if ($LASTEXITCODE -ne 0) {
+      Write-Host "Failed to upgrade packages based on requirements.txt. Exiting..."
+      exit
+  }
 }
 
 

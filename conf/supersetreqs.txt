@@ -1,5 +1,5 @@
-apache-superset==3.0.0
-sqlparse==0.4.4
-duckdb-engine==0.9.2
+apache-superset
+sqlparse
+duckdb-engine<0.10
 marshmallow_enum==1.5.1
-duckdb==0.9.1
+duckdb<0.10

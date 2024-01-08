@@ -7,6 +7,7 @@ $venvPath = "$HOME\Envs\main"
 $scriptName = "start.py"
 $scriptPath = $MyInvocation.MyCommand.Path
 $rootPath = Split-Path $scriptPath -Parent
+$boolUpdate = $true
 
 # Update repo before running
 Write-Host "Fetching updates..."
@@ -34,13 +35,14 @@ if ($env:VIRTUAL_ENV -eq $null) {
 }
 
 # Upgrade packages based on requirements.txt
-Write-Host "Upgrading packages based on requirements.txt..."
-& pip install --upgrade -r $rootPath/conf/requirements.txt 2>$null
-
-# Check if the upgrade was successful
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Failed to upgrade packages based on requirements.txt. Exiting..."
-    exit
+if ($boolUpdate) {
+  Write-Host "Upgrading packages based on requirements.txt..."
+  & pip install --upgrade -r $rootPath/conf/requirements.txt 2>$null
+  # Check if the upgrade was successful
+  if ($LASTEXITCODE -ne 0) {
+      Write-Host "Failed to upgrade packages based on requirements.txt. Exiting..."
+      exit
+  }
 }
 
 # Run the script

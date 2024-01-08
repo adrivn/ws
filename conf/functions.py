@@ -1,18 +1,20 @@
-from pathlib import WindowsPath
-from openpyxl.chart import BarChart, LineChart, Reference
-from openpyxl.styles import Font, PatternFill, Alignment, NamedStyle
-from openpyxl.utils.cell import coordinate_from_string, column_index_from_string
-from openpyxl.utils import get_column_letter
-from rich.console import Console
-from pandas import DataFrame
-import time
-import duckdb
 import glob
-import openpyxl
 import json
 import re
+import time
+from pathlib import WindowsPath
+
+import duckdb
+import openpyxl
+from openpyxl.chart import BarChart, LineChart, Reference
+from openpyxl.styles import Alignment, Font, NamedStyle, PatternFill
+from openpyxl.utils import get_column_letter
+from openpyxl.utils.cell import column_index_from_string, coordinate_from_string
+from pandas import DataFrame
+from rich.console import Console
 
 console = Console()
+
 
 def load_json_config(file):
     """
@@ -20,7 +22,6 @@ def load_json_config(file):
     """
     with open(file, "r", encoding="utf8") as f:
         return json.load(f)
-
 
 
 def find_files_included(directory, include_pattern):
@@ -31,11 +32,12 @@ def find_files_included(directory, include_pattern):
             files = glob.iglob(subdir.as_posix() + "/**/[!~$]*.xlsx", recursive=True)
             all_files.extend(files)
     return [f for f in all_files]
-            # for file in files:
-            #     yield file 
+    # for file in files:
+    #     yield file
+
 
 def auto_format_cell_width(ws):
-    for letter in range(1,ws.max_column):
+    for letter in range(1, ws.max_column):
         maximum_value = 0
         for cell in ws[get_column_letter(letter)]:
             val_to_check = len(str(cell.value))
@@ -93,7 +95,7 @@ def apply_styles(ws, style_dict: dict, style_ranges: dict, autofit: bool = True)
         if named_style.name not in ws.parent.named_styles:
             ws.parent.add_named_style(named_style)
 
-    console.print(f"Applying named styles...")
+    console.print("Applying named styles...")
     # Apply other styles
     for style_name, ranges in style_ranges.items():
         if style_name in style_dict:  # Check if the style is defined
@@ -122,7 +124,16 @@ def apply_styles(ws, style_dict: dict, style_ranges: dict, autofit: bool = True)
     if autofit:
         auto_format_cell_width(ws)
 
-def create_custom_chart(workbook_path: WindowsPath, target_sheet: str, data: list, chart_type: str, chart_style: int, position: str, **kwargs):
+
+def create_custom_chart(
+    workbook_path: WindowsPath,
+    target_sheet: str,
+    data: list,
+    chart_type: str,
+    chart_style: int,
+    position: str,
+    **kwargs,
+):
     match chart_type:
         case "bar":
             chart = BarChart()
@@ -180,4 +191,5 @@ def timing(f):
         end_time = time.perf_counter() - start_time
         console.print(f"Total time elapsed: {end_time:0.3f} seconds")
         return ret
+
     return wrap
