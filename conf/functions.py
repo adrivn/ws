@@ -154,14 +154,16 @@ def create_ddb_table(df: DataFrame, db_file: str, **params):
     console.print(f"Creating table into DuckDB file {db_file}...")
     table_name = params.get("table_name")
     query_file = params.get("query_file")
+    df.to_clipboard()
     with duckdb.connect(db_file) as db:
         db.register(f"{table_name}_temp", df)
         if not all([table_name, query_file]):
             console.print("table_name and query_file must be specified before running.")
             return
 
+        console.print(f"Creating table {table_name} from temp data...")
         db.execute(
-            f"create or replace table {table_name} as select * from {table_name}_temp"
+            f"create or replace table {table_name} as select * from {table_name}_temp x"
         )
         # Read file and split queries
         console.print("Fixing data...")
@@ -179,6 +181,7 @@ def create_ddb_table(df: DataFrame, db_file: str, **params):
                 query = query.replace("{" + placeholder + "}", value)
 
             # Execute query
+            console.print("Executing query:", query)
             db.execute(query)
 
     return

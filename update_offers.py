@@ -50,6 +50,8 @@ def extract_cell_values(file: str, search_strings: dict, columns_dict: dict):
         return data
 
     data = {label: None for label in search_strings.keys()}
+    data["full_path"] = os.path.abspath(file)
+    data["file_name"] = os.path.basename(file)
 
     try:
         hoja_ficha = list(
@@ -59,17 +61,12 @@ def extract_cell_values(file: str, search_strings: dict, columns_dict: dict):
         )
         hoja_ficha = hoja_ficha.pop() if hoja_ficha else "FICHA"
         sheet = workbook[hoja_ficha]
+        data["read_status"] = "Success"
+        data["read_details"] = None
     except KeyError as e:
-        data["full_path"] = Path(file).as_posix()
-        data["file_name"] = os.path.basename(file)
         data["read_status"] = "Fail"
         data["read_details"] = e
         return data
-
-    data["full_path"] = os.path.abspath(file)
-    data["file_name"] = os.path.basename(file)
-    data["read_status"] = "Success"
-    data["read_details"] = None
 
     # Convert the worksheet to a dictionary for faster searching
     sheet_dict = {
@@ -333,12 +330,12 @@ def main(
         # Extract the workbooks information one by one, then append the dictionary records to a 'data' variable
         cell_addresses = load_json_config(cell_address_file)
         sap_columns_mapping = load_json_config(sap_mapping_file)
+        current_year_number = datetime.datetime.now().year
         if current_year:
-            current_year = datetime.datetime.now().year
-            folder_pattern = rf"{current_year}"
+            folder_pattern = rf"{current_year_number}"
             ddb_table_name = all_duckdb_tables[0]
         else:
-            end_year = str(current_year)[-1]
+            end_year = str(current_year_number)[-1]
             folder_pattern = rf"20[12][^{end_year}]"
             ddb_table_name = all_duckdb_tables[1]
 

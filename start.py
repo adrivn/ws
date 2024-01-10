@@ -1,6 +1,8 @@
-from conf.functions import timing
+import datetime
 import subprocess
 import sys
+
+from conf.functions import timing
 
 
 def display_menu(input_dict):
@@ -10,9 +12,7 @@ def display_menu(input_dict):
     separator_bot = f"\n{message:=^40}\n"
     menu = (
         separator_up
-        + "\n".join(
-            f"[{k}]\t{v[0]}" for k, v in input_dict.items()
-        )
+        + "\n".join(f"[{k}]\t{v[0]}" for k, v in input_dict.items())
         + separator_bot
         + " >>> "
     )
@@ -51,18 +51,57 @@ def blank_runner(script: str, other_params: list = None):
     else:
         return subprocess.run([sys.executable, script])
 
+
 # Define the menus
 
+current_year = datetime.datetime.now().year
+
 ws_menu = {
-        1: ("Obtener ofertas desde el email", blank_runner, {"script": "./retrieve_email_attachments.py", "other_params": ["--file_type", "offers", "--months", "1"] }),
-        2: ("Obtener pipeline desde el email", blank_runner, {"script": "./retrieve_email_attachments.py", "other_params": ["--file_type", "pipe", "--months", "1"] }),
-        3: ("Crear / Actualizar fichero ofertas", {
-            1: ("Escanear todas las ofertas año en curso y crear fichero", blank_runner, {"script": "./update_offers.py", "other_params": ["--update", "--current"] }),
-            2: ("Crear nuevo fichero (con base en el ultimo)", blank_runner, {"script": "./update_offers.py", "other_params": ["--fix", "--reuse"] }),
+    1: (
+        "Obtener ofertas desde el email",
+        blank_runner,
+        {
+            "script": "./retrieve_email_attachments.py",
+            "other_params": ["--file_type", "offers", "--months", "1"],
+        },
+    ),
+    2: (
+        "Obtener pipeline desde el email",
+        blank_runner,
+        {
+            "script": "./retrieve_email_attachments.py",
+            "other_params": ["--file_type", "pipe", "--months", "1"],
+        },
+    ),
+    3: (
+        "Crear / Actualizar fichero ofertas",
+        {
+            1: (
+                f"Escanear las ofertas de {current_year} y crear fichero",
+                blank_runner,
+                {
+                    "script": "./update_offers.py",
+                    "other_params": ["--update", "--current"],
+                },
+            ),
+            2: (
+                "Crear nuevo fichero (con base en el ultimo)",
+                blank_runner,
+                {"script": "./update_offers.py", "other_params": ["--fix", "--reuse"]},
+            ),
             3: ("Crear nuevo fichero", blank_runner, {"script": "./update_offers.py"}),
-        }),
-        4: ("Crear / Actualizar fichero pipeline", blank_runner, {"script": "./update_pipe.py"}),
-        5: ("Crear / Actualizar fichero stock", blank_runner, {"script": "./update_stock.py" }),
+        },
+    ),
+    4: (
+        "Crear / Actualizar fichero pipeline",
+        blank_runner,
+        {"script": "./update_pipe.py"},
+    ),
+    5: (
+        "Crear / Actualizar fichero stock",
+        blank_runner,
+        {"script": "./update_stock.py"},
+    ),
 }
 
 
