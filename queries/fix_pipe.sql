@@ -2,7 +2,7 @@
 alter table {table_name} rename promo__ur to asset_id;
 -- Cambio de datatypes
 alter table {table_name} alter id_offer set data type int;
-alter table {table_name} alter asset_id set data type int[] using string_split(asset_id, ' / ');
+alter table {table_name} alter asset_id set data type int[] using string_split(asset_id, '/');
 alter table {table_name} alter month_planned_ep set data type tinyint using month(planned_signing_date);
 alter table {table_name} alter q_planned_ep set data type tinyint using quarter(planned_signing_date);
 alter table {table_name} alter year_planned_ep set data type smallint using year(planned_signing_date);
