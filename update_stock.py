@@ -85,6 +85,3 @@ write_output(
     # reuse_latest_file=True,
     # autofit=False
 )
-# agg_data.to_excel(DIR_OUTPUT / f"#{now_filename}_Wholesale_Stock.xlsx", index=False, sheet_name=f"Wholesale Stock {now_sheet}")
-
-
