@@ -24,6 +24,8 @@ if ($boolUpdate) {
 # Upgrade packages based on requirements.txt
   Write-Host "Upgrading packages based on requirements.txt..."
   & pip install --upgrade -r $rootPath/conf/supersetreqs.txt 2>$null
+  Write-Host "Setting up database..."
+  & cd $venvPath & cd Scripts & superset db upgrade & superset init
 # Check if the upgrade was successful
   if ($LASTEXITCODE -ne 0) {
       Write-Host "Failed to upgrade packages based on requirements.txt. Exiting..."
