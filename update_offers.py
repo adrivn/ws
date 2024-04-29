@@ -324,7 +324,7 @@ def main(
     console.print(f"Creating path to files: {conf.output_dir}")
     Path(conf.output_dir).mkdir(exist_ok=True)
 
-    all_duckdb_tables = ["ws_current_offers", "ws_hist_offers"]
+    all_duckdb_tables = ["current_offers", "hist_offers"]
 
     if update_offers:
         # Extract the workbooks information one by one, then append the dictionary records to a 'data' variable
@@ -359,6 +359,7 @@ def main(
             conf.db_file,
             query_file="./queries/fix_offers.sql",
             table_name=ddb_table_name,
+            table_schema=conf.db_schema,
         )
 
     # Get the data from disk sources
@@ -376,12 +377,14 @@ def main(
                     if not query.strip():
                         continue
                     # Replace placeholders with parameters
-                    new_query = query.replace("{table_name}", table)
+                    new_query = query.replace(
+                        "{table_name}", conf.db_schema + "." + table
+                    )
                     # Execute query
                     db.execute(new_query)
 
         data = db.execute(
-            "select table_name from information_schema.tables where regexp_matches(table_name, 'ws_.+_offers')"
+            f"select table_name from information_schema.tables where regexp_matches(table_name, '.+_offers$') and table_schema = '{conf.db_schema}'"
         ).fetchall()
         existing_tables = [d[0] for d in data]
         if len(existing_tables) > 1:

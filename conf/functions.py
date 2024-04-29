@@ -153,6 +153,7 @@ def create_custom_chart(
 def create_ddb_table(df: DataFrame, db_file: str, **params):
     console.print(f"Creating table into DuckDB file {db_file}...")
     table_name = params.get("table_name")
+    table_schema = params.get("table_schema")
     query_file = params.get("query_file")
     df.to_clipboard()
     with duckdb.connect(db_file) as db:
@@ -161,9 +162,9 @@ def create_ddb_table(df: DataFrame, db_file: str, **params):
             console.print("table_name and query_file must be specified before running.")
             return
 
-        console.print(f"Creating table {table_name} from temp data...")
+        console.print(f"Creating table {table_name} in {table_schema} from temp data...")
         db.execute(
-            f"create or replace table {table_name} as select * from {table_name}_temp x"
+            f"create or replace table {table_schema}.{table_name} as select * from {table_name}_temp x"
         )
         # Read file and split queries
         console.print("Fixing data...")

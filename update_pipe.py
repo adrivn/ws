@@ -40,7 +40,11 @@ with open("./queries/pipe_aggregates.sql", encoding="utf8") as sql_file:
     query = sql_file.read()
 
 create_ddb_table(
-    pipe_data, conf.db_file, table_name="pipeline", query_file="./queries/fix_pipe.sql"
+    pipe_data,
+    conf.db_file,
+    table_name="pipeline",
+    table_schema=conf.db_schema,
+    query_file="./queries/fix_pipe.sql",
 )
 
 with duckdb.connect(conf.db_file) as db:

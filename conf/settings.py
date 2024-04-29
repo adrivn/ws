@@ -10,7 +10,7 @@ DIR_PARQUET = Path("N:/CoralHudson/6. Stock/Parquet").absolute()
 DIR_OUTPUT_LOCAL = Path("_output/").absolute()
 DIR_INPUT_LOCAL = Path("_attachments/").absolute()
 DIR_OFFERS = Path("N:/CoralHudson/1. AM/8. Wholesale Channel/Ofertas recibidas SVH")
-DIR_PIPE = Path("N:/CoralHudson/1. AM/8. Wholesale Channel/WS PIPE 2023")
+DIR_PIPE = Path("N:/CoralHudson/1. AM/8. Wholesale Channel/WS PIPE 2024")
 DATABASE_FILE = Path("N:/CoralHudson/1. AM/8. Wholesale Channel/.code/database.db")
 DATABASE_FILE_LOCAL = Path("./basedatos_wholesale.db")
 
@@ -30,6 +30,7 @@ class FileSettings:
     areas_to_style: dict = None
     styles_file: WindowsPath = Path(CONF_DIR) / "styles.json"
     db_file: str = DATABASE_FILE.as_posix()
+    db_schema: str = "ws"
 
     def get_filename(self):
         return "#" + datetime.datetime.strftime(datetime.datetime.now(), "%Y%m%d") + self.output_file

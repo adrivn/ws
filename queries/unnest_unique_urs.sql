@@ -1,7 +1,7 @@
 with all_offers as (
-  select * from ws_hist_offers w1
+  select * from ws.hist_offers w1
   union all
-  select * from ws_current_offers w2
+  select * from ws.current_offers w2
 ),
 enriched_offers as (
   select  a.*,

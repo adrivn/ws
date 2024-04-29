@@ -27,6 +27,6 @@ select
     sum(o.ppa) as ppa_offer,
     string_agg(distinct o.direccion_territorial, '|') as dts
 from offers_expanded as o
-left join sales2023 as s
+left join sales2024 as s
     on o.ur_current = s.ur_current
 group by all;
