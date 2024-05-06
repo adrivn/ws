@@ -19,6 +19,7 @@ cell_address_file = Path(CONF_DIR / "cell_addresses.json")
 sap_mapping_file = Path(CONF_DIR / "sap_columns_mapping.json")
 styles_file = Path(CONF_DIR / "styles.json")
 
+
 @dataclass
 class FileSettings:
     directory: str
@@ -29,14 +30,19 @@ class FileSettings:
     header_start: int
     areas_to_style: dict = None
     styles_file: WindowsPath = Path(CONF_DIR) / "styles.json"
-    db_file: str = DATABASE_FILE.as_posix()
+    db_file: str = DATABASE_FILE_LOCAL.as_posix()
     db_schema: str = "ws"
 
     def get_filename(self):
-        return "#" + datetime.datetime.strftime(datetime.datetime.now(), "%Y%m%d") + self.output_file
+        return (
+            "#"
+            + datetime.datetime.strftime(datetime.datetime.now(), "%Y%m%d")
+            + self.output_file
+        )
 
     def get_output_path(self):
-        return ( self.output_dir / self.get_filename() )
+        return self.output_dir / self.get_filename()
+
 
 stockconf = FileSettings(
     DIR_OFFERS,
@@ -64,4 +70,3 @@ pipeconf = FileSettings(
     "Strats",
     6,
 )
-

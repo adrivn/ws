@@ -1,15 +1,23 @@
+import datetime
 import glob
 import json
+import os
 import re
 import time
 from pathlib import WindowsPath
+from typing import List
+
+from .constants import tipos_datos, second_pass_cast
 
 import duckdb
 import openpyxl
+import polars as pl
+from python_calamine import CalamineWorkbook
 from openpyxl.chart import BarChart, LineChart, Reference
 from openpyxl.styles import Alignment, Font, NamedStyle, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.utils.cell import column_index_from_string, coordinate_from_string
+from openpyxl.utils.dataframe import dataframe_to_rows
 from pandas import DataFrame
 from rich.console import Console
 
@@ -21,7 +29,7 @@ def load_json_config(file):
     Loads a JSON file containing external config data, like cell addresses and their corresponding output labels.
     """
     with open(file, "r", encoding="utf8") as f:
-        return json.load(f)
+        return json.loads(f.read())
 
 
 def find_files_included(directory, include_pattern):
@@ -162,7 +170,9 @@ def create_ddb_table(df: DataFrame, db_file: str, **params):
             console.print("table_name and query_file must be specified before running.")
             return
 
-        console.print(f"Creating table {table_name} in {table_schema} from temp data...")
+        console.print(
+            f"Creating table {table_name} in {table_schema} from temp data..."
+        )
         db.execute(
             f"create or replace table {table_schema}.{table_name} as select * from {table_name}_temp x"
         )
@@ -197,3 +207,168 @@ def timing(f):
         return ret
 
     return wrap
+
+
+def write_output(
+    output_file: str,
+    data: dict[pl.DataFrame | str],
+    style_specs: str,
+    style_ranges: str,
+    start_row: int,
+    title: str,
+    **kwargs,
+):
+    """
+    Writes the data to an output Excel workbook.
+    """
+    workbook = openpyxl.Workbook()
+    # Remove the default sheet created and add new sheets as per data keys
+    default_sheet = workbook.active
+    workbook.remove(default_sheet)
+    for sheet_name, dataframe in data.items():
+        sheet = workbook.create_sheet(sheet_name)
+        total_rows, total_columns = dataframe.shape
+        last_column_as_letter = get_column_letter(total_columns)
+
+        # Writing workbook creation date, title and description
+        sheet.cell(column=1, row=1, value=title)
+        sheet.cell(column=1, row=2, value="Created on:")
+        sheet.cell(column=2, row=2, value=datetime.datetime.now())
+        sheet.cell(column=1, row=3, value="Created by:")
+        sheet.cell(column=2, row=3, value=os.environ.get("USERNAME"))
+        sheet.cell(
+            column=1,
+            row=(start_row - 1),
+            value=f"=COUNTA(A{start_row + 1}:A{start_row + total_rows})",
+        )
+
+        # Writing data from dataframe to sheet starting from start_row
+        for i, row in enumerate(
+            dataframe_to_rows(dataframe, index=False, header=True), 1
+        ):
+            for j, cell in enumerate(row, 1):
+                cell = str(tuple(cell)) if isinstance(cell, list) else cell
+                sheet.cell(row=i + start_row - 1, column=j, value=cell)
+
+        autofit_check = kwargs.get("autofit", True)
+        apply_styles(sheet, style_specs, style_ranges, autofit_check)
+        filters = sheet.auto_filter
+        filters.ref = f"A{start_row}:{last_column_as_letter}{total_rows}"
+        sheet.freeze_panes = f"B{start_row + 1}"
+
+    console.print("Saving output file")
+    workbook.save(output_file)
+    console.print(f"File saved in: {output_file}")
+
+
+def find_shtname_from_pattern(sheet_list: List[str], sheet_pattern: str) -> str:
+    p = re.compile(sheet_pattern, flags=re.IGNORECASE)
+    x = list(filter(None, map(p.search, sheet_list))).pop()
+    return x.string  # attribute of a re.match object
+
+
+def get_valid_data(
+    sheet_as_values_list: List[str], idx_column_to_count: int
+) -> List[str]:
+    hdrs = sheet_as_values_list[0]
+    valid_headers = list(filter(lambda x: len(x) > 0, hdrs))
+    raw_data = list(zip(*sheet_as_values_list[1:]))[: len(valid_headers)]
+    actual_height = len(list(filter(lambda x: x != "", raw_data[1])))
+    # check the lenght of non-empty items in the first or second column, then crop the data up to that number
+    valid_data = list(zip(*sheet_as_values_list[1 : actual_height + 1]))[
+        : len(valid_headers)
+    ]
+    return valid_headers, valid_data
+
+
+def get_idx_of_pattern_col(pat: str, sheet_as_values_list: List[str]) -> int:
+    col_pattern = re.compile(pat, re.IGNORECASE)
+    [winner] = list(filter(None, map(col_pattern.search, sheet_as_values_list[0])))
+    # return sheet_as_values_list.index(winner)
+    return sheet_as_values_list[0].index(winner.string)
+
+
+def retrieve_all_info(list_of_files: List[str], config_file: str) -> pl.DataFrame:
+    data = []
+    final_data = []
+    # ./conf/xy_offer_labels.json
+    conf = load_json_config(config_file)
+
+    start = time.perf_counter()
+
+    for idx, item in enumerate(list_of_files):
+        file_name_short = os.path.basename(item)
+        print(f"Opening file {idx}: {item}")
+        wb_inmemory = CalamineWorkbook.from_path(item)
+        nombre_hoja_ficha = find_shtname_from_pattern(wb_inmemory.sheet_names, "ficha")
+        # Implementar regex y obtener indice
+        data = wb_inmemory.get_sheet_by_name(nombre_hoja_ficha).to_python(
+            skip_empty_area=False
+        )
+        erres = {}
+        for label, coords in conf.items():
+            x, y = coords
+            # print(f"{label} is:", wb_prueba[x][y])
+            erres[label] = data[x][y]
+
+        # part 2, the sap data
+        nombre_hoja_sap = find_shtname_from_pattern(wb_inmemory.sheet_names, "sap")
+        hoja = CalamineWorkbook.from_path(item).get_sheet_by_name(nombre_hoja_sap)
+
+        if hoja.total_height > 1:
+            rows_to_select = hoja.total_height
+        else:
+            rows_to_select = None
+        data_rows = hoja.to_python(skip_empty_area=False, nrows=rows_to_select)
+        idx_of_ur_col = get_idx_of_pattern_col("registral", data_rows)
+        _, valid_data = get_valid_data(data_rows, idx_of_ur_col)
+        df_data = (
+            pl.DataFrame(erres)
+            .with_columns(
+                [
+                    pl.when(pl.col(pl.Utf8).str.len_bytes() == 0)
+                    .then(None)
+                    .otherwise(pl.col(pl.Utf8))
+                    .name.keep()
+                ]
+            )
+            # casting, relaxed first then enforced
+            .cast(pl.String)
+            .cast(tipos_datos, strict=False)
+            .cast(second_pass_cast)
+        )
+
+        # get the sap data metrics/aggregates
+        df_sap = pl.DataFrame(valid_data)
+        try:
+            df_sap = df_sap.select(
+                pl.col(f"column_{idx_of_ur_col}")
+                .cast(pl.UInt32)
+                .implode()
+                .list.unique()
+                .alias("urs_unicos"),
+                pl.col(f"column_{idx_of_ur_col}")
+                .implode()
+                .list.unique()
+                .list.len()
+                .cast(pl.UInt16)
+                .alias("total_urs"),
+            )
+        except pl.ComputeError as e:
+            print(df_sap)
+            print(idx_of_ur_col)
+            raise e
+        united_df = pl.concat([df_data, df_sap], how="horizontal").with_columns(
+            pl.col("delegate").str.to_titlecase().name.keep(),
+            pl.col("client_name").str.to_titlecase().name.keep(),
+            pl.col("svh_recommendation").str.to_titlecase().name.keep(),
+            pl.col("client_email").str.to_lowercase().name.keep(),
+            full_path=pl.lit(item),
+            file_name=pl.lit(file_name_short),
+        )
+
+        final_data.append(united_df)
+
+    print(
+        f"Done. Loaded {len(list_of_files)} files in {time.perf_counter() - start} seconds"
+    )
