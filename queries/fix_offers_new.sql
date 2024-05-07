@@ -1,0 +1,15 @@
+-- update {table_schema}.{table_name} set offer_date = regexp_replace(trim(offer_date), '[\.\/]', '-', 'g') where regexp_matches(offer_date, '[\.\/]') = true;
+-- update {table_schema}.{table_name} set offer_date = strptime(offer_date, '%d-%m-%Y') where regexp_matches(offer_date, '^\d{2}-.');
+alter table {table_schema}.{table_name} add column if not exists offer_date date;
+update {table_schema}.{table_name} set offer_date = strptime(regexp_extract(full_path, '(2\d{7})', 1), '%Y%m%d') where offer_date is null;
+update {table_schema}.{table_name} set offer_date = strptime(regexp_extract(full_path, '(2\d{7})', 1), '%Y%m%d') where offer_date is null;
+update {table_schema}.{table_name} set offer_date = make_date(2024,month(cast(offer_date as timestamp)),day(cast(offer_date as timestamp))) where year(cast(offer_date as timestamp)) > 2024;
+alter table {table_schema}.{table_name} alter column offer_date set data type timestamp;
+alter table {table_schema}.{table_name} alter column offer_price set data type decimal(11,2);
+alter table {table_schema}.{table_name} alter column appraisal_price set data type decimal(11,2);
+alter table {table_schema}.{table_name} alter column web_price set data type decimal(11,2);
+alter table {table_schema}.{table_name} alter column sap_price set data type decimal(11,2);
+alter table {table_schema}.{table_name} add column if not exists unique_id varchar;
+alter table {table_schema}.{table_name} add column if not exists updated_at timestamp;
+update {table_schema}.{table_name} set unique_id = md5(full_path);
+update {table_schema}.{table_name} set updated_at = now();

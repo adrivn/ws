@@ -2,7 +2,7 @@ import polars as pl
 
 tipos_datos = {
     "offer_id": pl.Float32,
-    "offer_date": pl.Date,
+    # "offer_date": pl.Date,
     "offer_price": pl.Float32,
     "appraisal_price": pl.Float32,
     "sap_price": pl.Float32,
@@ -17,5 +17,5 @@ tipos_datos = {
 
 second_pass_cast = {
     "offer_id": pl.UInt32,
-    "client_phone": pl.UInt32,
+    "client_phone": pl.UInt64,
 }

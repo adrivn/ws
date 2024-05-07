@@ -18,7 +18,6 @@ from openpyxl.styles import Alignment, Font, NamedStyle, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.utils.cell import column_index_from_string, coordinate_from_string
 from openpyxl.utils.dataframe import dataframe_to_rows
-from pandas import DataFrame
 from rich.console import Console
 
 console = Console()
@@ -158,12 +157,11 @@ def create_custom_chart(
     return
 
 
-def create_ddb_table(df: DataFrame, db_file: str, **params):
+def create_ddb_table(df: pl.DataFrame, db_file: str, **params):
     console.print(f"Creating table into DuckDB file {db_file}...")
     table_name = params.get("table_name")
     table_schema = params.get("table_schema")
     query_file = params.get("query_file")
-    df.to_clipboard()
     with duckdb.connect(db_file) as db:
         db.register(f"{table_name}_temp", df)
         if not all([table_name, query_file]):
@@ -173,6 +171,7 @@ def create_ddb_table(df: DataFrame, db_file: str, **params):
         console.print(
             f"Creating table {table_name} in {table_schema} from temp data..."
         )
+        db.execute(f"create schema if not exists {table_schema}")
         db.execute(
             f"create or replace table {table_schema}.{table_name} as select * from {table_name}_temp x"
         )
@@ -211,7 +210,7 @@ def timing(f):
 
 def write_output(
     output_file: str,
-    data: dict[pl.DataFrame | str],
+    data: dict[pl.DataFrame, str],
     style_specs: str,
     style_ranges: str,
     start_row: int,
@@ -263,7 +262,7 @@ def write_output(
 
 def find_shtname_from_pattern(sheet_list: List[str], sheet_pattern: str) -> str:
     p = re.compile(sheet_pattern, flags=re.IGNORECASE)
-    x = list(filter(None, map(p.search, sheet_list))).pop()
+    x = list(filter(None, map(p.search, sheet_list)))[0]
     return x.string  # attribute of a re.match object
 
 
@@ -272,23 +271,30 @@ def get_valid_data(
 ) -> List[str]:
     hdrs = sheet_as_values_list[0]
     valid_headers = list(filter(lambda x: len(x) > 0, hdrs))
-    raw_data = list(zip(*sheet_as_values_list[1:]))[: len(valid_headers)]
-    actual_height = len(list(filter(lambda x: x != "", raw_data[1])))
+    raw_data = list(zip(*sheet_as_values_list))[: len(valid_headers)]
+    actual_height = len(list(filter(lambda x: x != "", raw_data[idx_column_to_count])))
     # check the lenght of non-empty items in the first or second column, then crop the data up to that number
-    valid_data = list(zip(*sheet_as_values_list[1 : actual_height + 1]))[
-        : len(valid_headers)
-    ]
+    valid_data = list(zip(*sheet_as_values_list[1:actual_height]))[: len(valid_headers)]
     return valid_headers, valid_data
 
 
 def get_idx_of_pattern_col(pat: str, sheet_as_values_list: List[str]) -> int:
     col_pattern = re.compile(pat, re.IGNORECASE)
-    [winner] = list(filter(None, map(col_pattern.search, sheet_as_values_list[0])))
+    winner = list(
+        filter(
+            None,
+            map(
+                col_pattern.search, list(map(lambda x: str(x), sheet_as_values_list[0]))
+            ),
+        )
+    )[0]
     # return sheet_as_values_list.index(winner)
     return sheet_as_values_list[0].index(winner.string)
 
 
-def retrieve_all_info(list_of_files: List[str], config_file: str) -> pl.DataFrame:
+def retrieve_all_info(
+    list_of_files: List, config_file: str, fallback_sample_limit: int
+) -> pl.DataFrame:
     data = []
     final_data = []
     # ./conf/xy_offer_labels.json
@@ -302,17 +308,25 @@ def retrieve_all_info(list_of_files: List[str], config_file: str) -> pl.DataFram
         wb_inmemory = CalamineWorkbook.from_path(item)
         nombre_hoja_ficha = find_shtname_from_pattern(wb_inmemory.sheet_names, "ficha")
         # Implementar regex y obtener indice
-        data = wb_inmemory.get_sheet_by_name(nombre_hoja_ficha).to_python(
-            skip_empty_area=False
-        )
+        data_original = wb_inmemory.get_sheet_by_name(nombre_hoja_ficha).to_python()
+        inicio = get_idx_of_pattern_col("oferta$", list(zip(*data_original)))
+        data = data_original[inicio:]
         erres = {}
         for label, coords in conf.items():
             x, y = coords
             # print(f"{label} is:", wb_prueba[x][y])
-            erres[label] = data[x][y]
+            erres[label] = data[x - inicio - 1][y - 1]
+            # erres[label] = data[x][y]
 
         # part 2, the sap data
-        nombre_hoja_sap = find_shtname_from_pattern(wb_inmemory.sheet_names, "sap")
+        try:
+            nombre_hoja_sap = find_shtname_from_pattern(wb_inmemory.sheet_names, "sap")
+        except IndexError as e:
+            print("Error:", e)
+            nombre_hoja_sap = find_shtname_from_pattern(
+                wb_inmemory.sheet_names, "oferta"
+            )
+
         hoja = CalamineWorkbook.from_path(item).get_sheet_by_name(nombre_hoja_sap)
 
         if hoja.total_height > 1:
@@ -339,7 +353,14 @@ def retrieve_all_info(list_of_files: List[str], config_file: str) -> pl.DataFram
         )
 
         # get the sap data metrics/aggregates
-        df_sap = pl.DataFrame(valid_data)
+        try:
+            df_sap = pl.DataFrame(valid_data, strict=False)
+        except pl.ComputeError as e:
+            print("Error creating dataframe", e)
+            flipped = list(zip(*valid_data))[:fallback_sample_limit]
+            valid_data = list(zip(*flipped))
+            print(valid_data)
+            df_sap = pl.DataFrame(valid_data)
         try:
             df_sap = df_sap.select(
                 pl.col(f"column_{idx_of_ur_col}")
@@ -372,3 +393,4 @@ def retrieve_all_info(list_of_files: List[str], config_file: str) -> pl.DataFram
     print(
         f"Done. Loaded {len(list_of_files)} files in {time.perf_counter() - start} seconds"
     )
+    return pl.concat(final_data)
