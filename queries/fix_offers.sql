@@ -1,11 +1,18 @@
 alter table {table_schema}.{table_name} alter column commercialdev set data type varchar;
 alter table {table_schema}.{table_name} alter column jointdev set data type varchar;
+alter table {table_schema}.{table_name} alter column offer_date set data type varchar;
 update {table_schema}.{table_name} set offer_date = regexp_replace(trim(offer_date), '[\.\/]', '-', 'g') where regexp_matches(offer_date, '[\.\/]') = true;
 update {table_schema}.{table_name} set offer_date = strptime(offer_date, '%d-%m-%Y') where regexp_matches(offer_date, '^\d{2}-.');
 update {table_schema}.{table_name} set offer_date = strptime(regexp_extract(full_path, '(2\d{7})', 1), '%Y%m%d') where regexp_matches(offer_date, '^[345789]') or offer_date is null;
 update {table_schema}.{table_name} set offer_date = make_date(2024,month(cast(offer_date as timestamp)),day(cast(offer_date as timestamp))) where year(cast(offer_date as timestamp)) > 2024;
+alter table {table_schema}.{table_name} alter offer_price set data type varchar;
 update {table_schema}.{table_name} set offer_price = nullif(regexp_extract(offer_price, '\d+\.?\d+'), '') where regexp_matches(offer_price, '[a-zA-Z\s]');
+alter table {table_schema}.{table_name} alter appraisal_price set data type varchar;
 update {table_schema}.{table_name} set appraisal_price = nullif(regexp_extract(appraisal_price, '\d+\.?\d+'), '') where regexp_matches(appraisal_price, '[a-zA-Z\s]');
+alter table {table_schema}.{table_name} alter column offer_id set data type varchar;
+alter table {table_schema}.{table_name} alter column web_price set data type varchar;
+alter table {table_schema}.{table_name} alter column sap_price set data type varchar;
+alter table {table_schema}.{table_name} alter column contract_deposit set data type varchar;
 update {table_schema}.{table_name} set web_price = NULL where regexp_matches(web_price, '\D');
 update {table_schema}.{table_name} set sap_price = NULL where regexp_matches(sap_price, '\D');
 update {table_schema}.{table_name} set unique_urs = string_to_array(regexp_replace(unique_urs,'[\[\]]', '', 'g'), ',');
@@ -16,6 +23,7 @@ update {table_schema}.{table_name} set offer_id = NULL where len(offer_id) < 6 o
 update {table_schema}.{table_name} set contract_deposit = 0 where contract_deposit = '-';
 alter table {table_schema}.{table_name} alter column client_description set data type varchar;
 update {table_schema}.{table_name} set client_description = NULL where client_description = 'NOMBRE';
+update {table_schema}.{table_name} set commercialdev = regexp_replace(jointdev, '-', '');
 update {table_schema}.{table_name} set jointdev = regexp_replace(jointdev, '-', '');
 alter table {table_schema}.{table_name} alter column offer_date set data type timestamp;
 alter table {table_schema}.{table_name} alter column offer_price set data type double;
@@ -26,6 +34,7 @@ alter table {table_schema}.{table_name} alter column unique_urs set data type in
 alter table {table_schema}.{table_name} alter column commercialdev set data type int[];
 alter table {table_schema}.{table_name} alter column jointdev set data type int[];
 alter table {table_schema}.{table_name} alter column offer_id set data type int;
+alter table {table_schema}.{table_name} alter column contract_deposit set data type double;
 alter table {table_schema}.{table_name} alter column legal_status set data type varchar;
 alter table {table_schema}.{table_name} alter column read_details set data type varchar;
 alter table {table_schema}.{table_name} alter column rollup_y_n set data type varchar;

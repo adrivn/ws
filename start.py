@@ -81,15 +81,14 @@ ws_menu = {
                 blank_runner,
                 {
                     "script": "./update_offers.py",
-                    "other_params": ["--update", "--current"],
+                    "other_params": ["--update", f"--{current_year}"],
                 },
             ),
             2: (
-                "Crear nuevo fichero (con base en el ultimo)",
+                "Crear nuevo fichero",
                 blank_runner,
-                {"script": "./update_offers.py", "other_params": ["--fix", "--reuse"]},
+                {"script": "./update_offers.py", "other_params": ["--write"]},
             ),
-            3: ("Crear nuevo fichero", blank_runner, {"script": "./update_offers.py"}),
         },
     ),
     4: (

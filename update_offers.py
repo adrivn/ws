@@ -7,6 +7,7 @@ from pathlib import Path
 import duckdb
 import openpyxl
 import pandas as pd
+import polars as pl
 import pendulum as pdl
 from openpyxl.utils import get_column_letter
 from openpyxl.utils.dataframe import dataframe_to_rows
@@ -18,6 +19,7 @@ from conf.functions import (
     create_style,
     find_files_included,
     load_json_config,
+    write_offers,
 )
 from conf.settings import cell_address_file
 from conf.settings import offersconf as conf
@@ -261,7 +263,7 @@ def enrich_offers(input_query: str, reuse_latest_file: bool = False):
 
 def write_output(
     output_file: str,
-    data: dict[pd.DataFrame | str],
+    data: dict[str, pl.DataFrame],
     style_specs: str,
     style_ranges: str,
     start_row: int,
@@ -294,7 +296,7 @@ def write_output(
 
         # Writing data from dataframe to sheet starting from start_row
         for i, row in enumerate(
-            dataframe_to_rows(dataframe, index=False, header=True), 1
+            dataframe_to_rows(dataframe.to_pandas(), index=False, header=True), 1
         ):
             for j, cell in enumerate(row, 1):
                 cell = str(tuple(cell)) if isinstance(cell, list) else cell
@@ -313,32 +315,27 @@ def write_output(
 
 def main(
     update_offers: bool = False,
-    current_year: bool = True,
-    reuse: bool = False,
+    write_file: bool = False,
+    year_to_scrape: int = datetime.datetime.now().year,
+    # reuse: bool = False,
     fix_data: bool = True,
 ):
     # TODO: Keep track of all the offers that have already been read in the file
     # We can do that by listing all the filenames in the Excel and compute the differente vs the found files
 
-    # Create the output directory if not exists
-    console.print(f"Creating path to files: {conf.output_dir}")
-    Path(conf.output_dir).mkdir(exist_ok=True)
-
-    all_duckdb_tables = ["current_offers", "hist_offers"]
-
     if update_offers:
+        # Create the output directory if not exists
+        console.print(f"Creating path to files: {conf.output_dir}")
+        Path(conf.output_dir).mkdir(exist_ok=True)
+
+        table_name_to_use = "ws_offers_"
+        ddb_table_name = table_name_to_use + str(year_to_scrape)
+
         # Extract the workbooks information one by one, then append the dictionary records to a 'data' variable
         cell_addresses = load_json_config(cell_address_file)
         sap_columns_mapping = load_json_config(sap_mapping_file)
-        current_year_number = datetime.datetime.now().year
-        if current_year:
-            folder_pattern = rf"{current_year_number}"
-            ddb_table_name = all_duckdb_tables[0]
-        else:
-            end_year = str(current_year_number)[-1]
-            folder_pattern = rf"20[12][^{end_year}]"
-            ddb_table_name = all_duckdb_tables[1]
 
+        folder_pattern = rf"{year_to_scrape}"
         files = find_files_included(conf.directory, folder_pattern)
         files_count = len(files)
 
@@ -362,88 +359,16 @@ def main(
             table_schema=conf.db_schema,
         )
 
-    # Get the data from disk sources
-    with duckdb.connect(conf.db_file) as db:
-        if not update_offers and fix_data:
-            # Fix the data from the offers table, if it hasn't been already
-            with open("./queries/fix_offers.sql", "r", encoding="utf8") as f:
-                queries = f.read().split(";")
-
-            # Iterate over each query
-            for table in all_duckdb_tables:
-                console.print(f"Fixing data from table {table}...")
-                for query in queries:
-                    # Skip empty queries
-                    if not query.strip():
-                        continue
-                    # Replace placeholders with parameters
-                    new_query = query.replace(
-                        "{table_name}", conf.db_schema + "." + table
-                    )
-                    # Execute query
-                    db.execute(new_query)
-
-        data = db.execute(
-            f"select table_name from information_schema.tables where regexp_matches(table_name, '.+_offers$') and table_schema = '{conf.db_schema}'"
-        ).fetchall()
-        existing_tables = [d[0] for d in data]
-        if len(existing_tables) > 1:
-            query_para_crear_tablas = " UNION ".join(
-                [
-                    """select *
-                    replace(
-                    --list_aggregate(string_to_array(regexp_replace(address, '(\[|\])', '', 'g'), ','), 'string_agg', ' | ') as address,
-                    list_aggregate(string_to_array(regexp_replace(asset_type, '(\[|\])', '', 'g'), ','), 'string_agg', ' | ') as asset_type,
-                    --list_aggregate(string_to_array(regexp_replace(asset_location, '(\[|\])', '', 'g'), ','), 'string_agg', ' | ') as asset_location
-                    )
-                    from
-                    """
-                    + t
-                    for t in existing_tables
-                ]
-            )
-        else:
-            query_para_crear_tablas = "select * from " + existing_tables[0]
-
     # Plug said data into the offers dataframe
-    expanded_df = enrich_offers(query_para_crear_tablas, reuse_latest_file=reuse)
-    no_of_files, no_of_variables = expanded_df.shape
-    columns_start_at = 1
-    first_column_letter, last_column_letter = (
-        get_column_letter(columns_start_at),
-        get_column_letter(no_of_variables),
-    )
-    datos = {conf.sheet_name: expanded_df}
-
-    # Define your custom formatting schema here
-    entire_range = f"{first_column_letter}{conf.header_start}:{last_column_letter}{conf.header_start + no_of_files}"
-    header_range = f"{first_column_letter}{conf.header_start}:{last_column_letter}{conf.header_start}"
-
-    cell_ranges = {
-        "default": [entire_range],
-        "header": [header_range],
-        "data": [
-            f"D{conf.header_start + 1}:G{conf.header_start + no_of_files}",
-            f"AV{conf.header_start + 1}:AW{conf.header_start + no_of_files}",
-        ],
-        "dates": [f"C{conf.header_start + 1}:C{conf.header_start + no_of_files}"],
-        "input": ["B3"],
-        "title": ["A1"],
-        "subtitle": ["A3"],
-    }
-
-    conf.areas_to_style = cell_ranges
-
-    write_output(
-        conf.get_output_path(),
-        datos,
-        stylesheet,
-        conf.areas_to_style,
-        conf.header_start,
-        conf.sheet_name,
-        # reuse_latest_file=True,
-        autofit=False,
-    )
+    # expanded_df = enrich_offers(query_para_crear_tablas, reuse_latest_file=reuse)
+    if write_file:
+        write_offers(
+            conf.get_output_path(),
+            conf,
+            stylesheet,
+            # reuse_latest_file=True,
+            autofit=False,
+        )
 
 
 if __name__ == "__main__":
@@ -455,16 +380,9 @@ if __name__ == "__main__":
         help="Whether or not to scan the update directory and update the offer data. Setting this to TRUE without the current_year option will update latest offers",
     )
     parser.add_argument(
-        "--current",
-        default=False,
-        action="store_true",
-        help="Whether to scan the current year offers directory and then update the file with the new information.",
-    )
-    parser.add_argument(
-        "--reuse",
-        default=False,
-        action="store_true",
-        help="Use the latest offers file as base and bring any custom data columns that may have been added",
+        "--year",
+        default=datetime.datetime.now().year,
+        help="Year for the offers to scan",
     )
     parser.add_argument(
         "--fix",
@@ -472,10 +390,15 @@ if __name__ == "__main__":
         action="store_true",
         help="Use the latest offers file as base and bring any custom data columns that may have been added",
     )
+    parser.add_argument(
+        "--write",
+        default=False,
+        action="store_true",
+        help="Create the Excel file",
+    )
     args = parser.parse_args()
     main(
         update_offers=args.update,
-        current_year=args.current,
-        reuse=args.reuse,
-        fix_data=args.fix,
+        write_file=args.write,
+        year_to_scrape=args.year,
     )

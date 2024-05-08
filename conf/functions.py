@@ -1,15 +1,17 @@
+import datetime
 import glob
 import json
 import re
 import time
-from pathlib import WindowsPath
+import os
 
+from conf.settings import FileSettings
 import duckdb
 import openpyxl
-from openpyxl.chart import BarChart, LineChart, Reference
 from openpyxl.styles import Alignment, Font, NamedStyle, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.utils.cell import column_index_from_string, coordinate_from_string
+from openpyxl.utils.dataframe import dataframe_to_rows
 from pandas import DataFrame
 from rich.console import Console
 
@@ -46,7 +48,7 @@ def auto_format_cell_width(ws):
         ws.column_dimensions[get_column_letter(letter)].width = maximum_value + 2
 
 
-def create_style(json_file):
+def create_style(json_file) -> dict[str, None]:
     # Load styles from JSON file
     with open(json_file) as file:
         style_data = json.load(file)
@@ -125,44 +127,21 @@ def apply_styles(ws, style_dict: dict, style_ranges: dict, autofit: bool = True)
         auto_format_cell_width(ws)
 
 
-def create_custom_chart(
-    workbook_path: WindowsPath,
-    target_sheet: str,
-    data: list,
-    chart_type: str,
-    chart_style: int,
-    position: str,
-    **kwargs,
-):
-    match chart_type:
-        case "bar":
-            chart = BarChart()
-        case "line":
-            chart = LineChart()
-    workbook = openpyxl.load_workbook(workbook_path, data_only=True)
-    ws = workbook[target_sheet]
-    left, right, up, down = data
-    chart_data = Reference(ws, min_col=left, max_col=right, min_row=up, max_row=down)
-    chart.add_data(chart_data, titles_from_data=True)
-    chart.style = chart_style
-    ws.add_chart(chart, position)
-    workbook.save(workbook_path)
-    return
-
-
 def create_ddb_table(df: DataFrame, db_file: str, **params):
     console.print(f"Creating table into DuckDB file {db_file}...")
     table_name = params.get("table_name")
     table_schema = params.get("table_schema")
     query_file = params.get("query_file")
-    df.to_clipboard()
+
     with duckdb.connect(db_file) as db:
         db.register(f"{table_name}_temp", df)
         if not all([table_name, query_file]):
             console.print("table_name and query_file must be specified before running.")
             return
 
-        console.print(f"Creating table {table_name} in {table_schema} from temp data...")
+        console.print(
+            f"Creating table {table_name} in {table_schema} from temp data..."
+        )
         db.execute(
             f"create or replace table {table_schema}.{table_name} as select * from {table_name}_temp x"
         )
@@ -186,6 +165,94 @@ def create_ddb_table(df: DataFrame, db_file: str, **params):
             db.execute(query)
 
     return
+
+
+def write_offers(
+    output_file: str,
+    config: FileSettings,
+    style_specs: dict[str, None],
+    **kwargs,
+):
+    """
+    Writes the data to an output Excel workbook.
+    """
+    with duckdb.connect(config.db_file) as db:
+        with open("./queries/write_offers.sql", "r", encoding="utf8") as f:
+            query = f.read()
+            # Execute query
+            dataframe = db.sql(query).pl()
+    no_of_files, no_of_variables = dataframe.shape
+
+    columns_start_at = 1
+    first_column_letter, last_column_letter = (
+        get_column_letter(columns_start_at),
+        get_column_letter(no_of_variables),
+    )
+    # Define your custom formatting schema here
+    entire_range = f"{first_column_letter}{config.header_start}:{last_column_letter}{config.header_start + no_of_files}"
+    header_range = f"{first_column_letter}{config.header_start}:{last_column_letter}{config.header_start}"
+
+    cell_ranges = {
+        "default": [entire_range],
+        "header": [header_range],
+        "data": [
+            f"E{config.header_start + 1}:E{config.header_start + no_of_files}",
+            f"H{config.header_start + 1}:H{config.header_start + no_of_files}",
+            f"K{config.header_start + 1}:M{config.header_start + no_of_files}",
+            f"S{config.header_start + 1}:V{config.header_start + no_of_files}",
+        ],
+        "dates": [
+            f"F{config.header_start + 1}:F{config.header_start + no_of_files}",
+            f"I{config.header_start + 1}:I{config.header_start + no_of_files}",
+            f"R{config.header_start + 1}:R{config.header_start + no_of_files}",
+        ],
+        "input": ["B3"],
+        "title": ["A1"],
+        "subtitle": ["A3"],
+    }
+
+    config.areas_to_style = cell_ranges
+
+    workbook = openpyxl.Workbook()
+    # Remove the default sheet created and add new sheets as per data keys
+    workbook.remove(workbook.active)
+    sheet = workbook.create_sheet("Offers Data")
+
+    total_rows, total_columns = dataframe.shape
+    last_column_as_letter = get_column_letter(total_columns)
+
+    # Writing workbook creation date, title and description
+    title = config.sheet_name
+    start_row = config.header_start
+
+    sheet.cell(column=1, row=1, value=title)
+    sheet.cell(column=1, row=2, value="Created on:")
+    sheet.cell(column=2, row=2, value=datetime.datetime.now())
+    sheet.cell(column=1, row=3, value="Created by:")
+    sheet.cell(column=2, row=3, value=os.environ.get("USERNAME"))
+    sheet.cell(
+        column=1,
+        row=(start_row - 1),
+        value=f"=COUNTA(A{start_row + 1}:A{start_row + total_rows})",
+    )
+
+    # Writing data from dataframe to sheet starting from start_row
+    for i, row in enumerate(
+        dataframe_to_rows(dataframe.to_pandas(), index=False, header=True), 1
+    ):
+        for j, cell in enumerate(row, 1):
+            cell = str(tuple(cell)) if isinstance(cell, list) else cell
+            sheet.cell(row=i + start_row - 1, column=j, value=cell)
+
+    autofit_check = kwargs.get("autofit", True)
+    apply_styles(sheet, style_specs, config.areas_to_style, autofit_check)
+    filters = sheet.auto_filter
+    filters.ref = f"A{start_row}:{last_column_as_letter}{total_rows}"
+    sheet.freeze_panes = f"B{start_row + 1}"
+
+    console.print("Saving output file")
+    workbook.save(output_file)
+    console.print(f"File saved in: {output_file}")
 
 
 def timing(f):
