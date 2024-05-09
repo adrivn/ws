@@ -2,7 +2,7 @@ import os
 import re
 
 import duckdb
-import pandas as pd
+import polars as pl
 from rich.console import Console
 
 from conf.functions import create_ddb_table, create_style
@@ -28,10 +28,26 @@ console.print("Obteniendo datos externos...")
 
 
 console.print(f"Cargando fichero de pipe: {latest_pipe_file}")
-pipe_data = pd.read_excel(
-    latest_pipe_file, sheet_name="PIPE", skiprows=2, usecols="A:AE"
-).rename(
-    columns=lambda c: re.sub("[^A-Za-z0-9 ]", "", c).strip().replace(" ", "_").lower()
+pipe_data = (
+    pl.read_excel(
+        latest_pipe_file,
+        sheet_name="PIPE",
+        engine="calamine",
+        read_options={
+            "header_row": 2,
+            "skip_rows": 0,
+            "use_columns": "A:AF",
+        },
+    )
+    .rename(
+        lambda c: re.sub(r"[^A-Za-z0-9\s]", "", c).strip().replace(" ", "_").lower()
+    )
+    .with_columns(
+        pl.col("promo__ur")
+        .str.split("/")
+        .list.eval(pl.element().str.strip_chars().cast(pl.UInt32)),
+        pl.col("id_offer").cast(pl.Int32),
+    )
 )
 
 console.print("Guardando tabla de pipe en base de datos...")
@@ -39,42 +55,30 @@ console.print("Guardando tabla de pipe en base de datos...")
 with open("./queries/pipe_aggregates.sql", encoding="utf8") as sql_file:
     query = sql_file.read()
 
+with duckdb.connect(conf.db_file) as db:
+    agg_data_offers = db.execute(query).pl()
+
+to_output = pipe_data.join(agg_data_offers, left_on="id_offer", right_on="offerid")
+
 create_ddb_table(
-    pipe_data,
+    to_output.to_pandas(),
     conf.db_file,
     table_name="pipeline",
     table_schema=conf.db_schema,
-    query_file="./queries/fix_pipe.sql",
 )
 
-with duckdb.connect(conf.db_file) as db:
-    agg_data_offers = db.execute(query).df()
-
-# Variables, columnas y nombres
-PK_PIPE = "id_offer"
-PK_AGG_DATA = "offerid"
-LSEV_COLUMN = "lsev_offer"
-PPA_COLUMN = "ppa_offer"
-
-# Create a Pandas Excel writer using XlsxWriter as the engine.
-cols_to_use = agg_data_offers.columns.difference(pipe_data.columns)
 
 console.print("Agregando datos y completando pipe con datos externos...")
 
-# Convert the DataFrame to an XlsxWriter Excel object.
-merged = pd.merge(
-    pipe_data,
-    agg_data_offers[cols_to_use],
-    left_on=PK_PIPE,
-    right_on=PK_AGG_DATA,
-    how="left",
-).drop(columns=[PK_AGG_DATA])
-
-data = {conf.sheet_name: merged}
+data = {
+    conf.sheet_name: to_output.with_columns(
+        pl.col("promo__ur").list.eval(pl.element().cast(pl.Utf8)).list.join("-")
+    ).to_pandas()
+}
 
 console.print("Creando strats...")
 
-rows = merged.shape[0]
+rows = to_output.shape[0]
 main_styles = create_style("./conf/styles.json")
 custom_styles = {
     "default": [

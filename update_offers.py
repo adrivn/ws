@@ -7,7 +7,6 @@ from pathlib import Path
 import duckdb
 import openpyxl
 import pandas as pd
-import polars as pl
 import pendulum as pdl
 from openpyxl.utils import get_column_letter
 from openpyxl.utils.dataframe import dataframe_to_rows
@@ -262,10 +261,10 @@ def enrich_offers(input_query: str, reuse_latest_file: bool = False):
 
 
 def write_output(
-    output_file: str,
-    data: dict[str, pl.DataFrame],
-    style_specs: str,
-    style_ranges: str,
+    output_file: Path,
+    data: dict[str, pd.DataFrame],
+    style_specs: dict,
+    style_ranges: dict,
     start_row: int,
     title: str,
     **kwargs,
@@ -296,7 +295,7 @@ def write_output(
 
         # Writing data from dataframe to sheet starting from start_row
         for i, row in enumerate(
-            dataframe_to_rows(dataframe.to_pandas(), index=False, header=True), 1
+            dataframe_to_rows(dataframe, index=False, header=True), 1
         ):
             for j, cell in enumerate(row, 1):
                 cell = str(tuple(cell)) if isinstance(cell, list) else cell

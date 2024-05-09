@@ -149,7 +149,7 @@ def create_ddb_table(
     db_file: str,
     table_name: str,
     table_schema: str,
-    query_file: str,
+    query_file: str | None = None,
     insert_instead: bool = False,
 ):
     console.print(f"Creating table into DuckDB file {db_file}...")
@@ -166,27 +166,28 @@ def create_ddb_table(
         )
 
         # Read file and split queries
-        console.print("Fixing data...")
-        with open(query_file, "r", encoding="utf8") as f:
-            queries = f.read().split(";")
+        if query_file is not None:
+            console.print("Fixing data...")
+            with open(query_file, "r", encoding="utf8") as f:
+                queries = f.read().split(";")
 
-        # Iterate over each query
-        for query in queries:
-            # Skip empty queries
-            if not query.strip():
-                continue
-            if insert_instead:
-                # Replace placeholders with parameters
-                query = query.replace("{table_schema}.", "").replace(
-                    "{table_name}", temp_table_name
-                )
-            else:
-                query = query.replace("{table_schema}.", "").replace(
-                    "{table_name}", temp_table_name
-                )
-            # Execute query
-            console.print("Executing query:", query)
-            db.execute(query)
+            # Iterate over each query
+            for query in queries:
+                # Skip empty queries
+                if not query.strip():
+                    continue
+                if insert_instead:
+                    # Replace placeholders with parameters
+                    query = query.replace("{table_schema}.", "").replace(
+                        "{table_name}", temp_table_name
+                    )
+                else:
+                    query = query.replace("{table_schema}.", "").replace(
+                        "{table_name}", temp_table_name
+                    )
+                # Execute query
+                console.print("Executing query:", query)
+                db.execute(query)
 
         if insert_instead:
             console.print(
