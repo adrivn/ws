@@ -316,13 +316,9 @@ def write_output(
 def main(
     update_offers: bool = False,
     write_file: bool = False,
+    refresh_data: bool = False,
     year_to_scrape: int = datetime.datetime.now().year,
-    # reuse: bool = False,
-    fix_data: bool = True,
 ):
-    # TODO: Keep track of all the offers that have already been read in the file
-    # We can do that by listing all the filenames in the Excel and compute the differente vs the found files
-
     if update_offers:
         # Create the output directory if not exists
         console.print(f"Creating path to files: {conf.output_dir}")
@@ -336,14 +332,25 @@ def main(
         sap_columns_mapping = load_json_config(sap_mapping_file)
 
         folder_pattern = rf"{year_to_scrape}"
-        files = find_files_included(conf.directory, folder_pattern)
+        files, total_files = find_files_included(
+            conf.directory, folder_pattern, conf.db_file, only_new_files=refresh_data
+        )
         files_count = len(files)
+        if files_count == 0:
+            console.print("No files (new or old) found. Aborting...")
+            return
+
+        if files_count == total_files:
+            console.print(
+                "The source files are the same, rerun the script without --refresh."
+            )
+            return
 
         with console.status("Extracting cell values from files...") as status:
             data = []
             for idx, file in enumerate(files, start=1):
                 status.update(
-                    f"[{idx}/{files_count}] ~ Loading data from file: [bold green]{file}"
+                    f"[{idx}/{files_count}] ~ Loading data from file: [bold green]{file}[/bold green]"
                 )
                 data.append(
                     extract_cell_values(file, cell_addresses, sap_columns_mapping)
@@ -357,10 +364,9 @@ def main(
             query_file="./queries/fix_offers.sql",
             table_name=ddb_table_name,
             table_schema=conf.db_schema,
+            insert_instead=refresh_data,
         )
 
-    # Plug said data into the offers dataframe
-    # expanded_df = enrich_offers(query_para_crear_tablas, reuse_latest_file=reuse)
     if write_file:
         write_offers(
             conf.get_output_path(),
@@ -396,9 +402,16 @@ if __name__ == "__main__":
         action="store_true",
         help="Create the Excel file",
     )
+    parser.add_argument(
+        "--refresh",
+        default=False,
+        action="store_true",
+        help="Only insert new files",
+    )
     args = parser.parse_args()
     main(
         update_offers=args.update,
         write_file=args.write,
         year_to_scrape=args.year,
+        refresh_data=args.refresh,
     )

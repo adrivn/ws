@@ -4,6 +4,8 @@ import json
 import re
 import time
 import os
+from pathlib import Path
+from typing import List, Tuple
 
 from conf.settings import FileSettings
 import duckdb
@@ -26,16 +28,31 @@ def load_json_config(file):
         return json.load(f)
 
 
-def find_files_included(directory, include_pattern):
+def find_files_included(
+    directory: Path,
+    include_pattern: str,
+    database_file: str,
+    only_new_files: bool = False,
+) -> Tuple[List[str], int]:
+    query = f"""select full_path from ws.ws_offers_{include_pattern};"""
+
     all_files = []
     for subdir in directory.iterdir():
         if subdir.is_dir() and re.search(include_pattern, str(subdir)):
             console.print(f"Scanning offers directory {subdir.as_posix()}...")
             files = glob.iglob(subdir.as_posix() + "/**/[!~$]*.xlsx", recursive=True)
             all_files.extend(files)
-    return [f for f in all_files]
-    # for file in files:
-    #     yield file
+
+    if only_new_files:
+        with duckdb.connect(database_file) as db:
+            ficheros_ya_leidos = [
+                os.path.normpath(x[0]) for x in db.sql(query).fetchall()
+            ]
+            ficheros_existentes = [os.path.normpath(n) for n in all_files]
+            ficheros_sin_leer = list(set(ficheros_existentes) - set(ficheros_ya_leidos))
+            return ficheros_sin_leer, len(all_files)
+
+    return [os.path.normpath(f) for f in all_files], len(all_files)
 
 
 def auto_format_cell_width(ws):
@@ -127,24 +144,27 @@ def apply_styles(ws, style_dict: dict, style_ranges: dict, autofit: bool = True)
         auto_format_cell_width(ws)
 
 
-def create_ddb_table(df: DataFrame, db_file: str, **params):
+def create_ddb_table(
+    df: DataFrame,
+    db_file: str,
+    table_name: str,
+    table_schema: str,
+    query_file: str,
+    insert_instead: bool = False,
+):
     console.print(f"Creating table into DuckDB file {db_file}...")
-    table_name = params.get("table_name")
-    table_schema = params.get("table_schema")
-    query_file = params.get("query_file")
 
     with duckdb.connect(db_file) as db:
-        db.register(f"{table_name}_temp", df)
+        temp_view_register = f"{table_name}_temp"
+        temp_table_name = "tmpoffers_deleteafter"
+        db.register(temp_view_register, df)
         if not all([table_name, query_file]):
             console.print("table_name and query_file must be specified before running.")
             return
-
-        console.print(
-            f"Creating table {table_name} in {table_schema} from temp data..."
-        )
         db.execute(
-            f"create or replace table {table_schema}.{table_name} as select * from {table_name}_temp x"
+            f"create or replace table {temp_table_name} as select * from {temp_view_register}"
         )
+
         # Read file and split queries
         console.print("Fixing data...")
         with open(query_file, "r", encoding="utf8") as f:
@@ -155,20 +175,41 @@ def create_ddb_table(df: DataFrame, db_file: str, **params):
             # Skip empty queries
             if not query.strip():
                 continue
-
-            # Replace placeholders with parameters
-            for placeholder, value in params.items():
-                query = query.replace("{" + placeholder + "}", value)
-
+            if insert_instead:
+                # Replace placeholders with parameters
+                query = query.replace("{table_schema}.", "").replace(
+                    "{table_name}", temp_table_name
+                )
+            else:
+                query = query.replace("{table_schema}.", "").replace(
+                    "{table_name}", temp_table_name
+                )
             # Execute query
             console.print("Executing query:", query)
             db.execute(query)
+
+        if insert_instead:
+            console.print(
+                f"Inserting values into table {table_name} in {table_schema} from temp data..."
+            )
+            db.execute(
+                f"insert into {table_schema}.{table_name} by name (select * from {temp_table_name})"
+            )
+            return
+
+        console.print(
+            f"Creating table {table_name} in {table_schema} from temp data..."
+        )
+        db.execute(
+            f"create or replace table {table_schema}.{table_name} as select * from {temp_table_name}"
+        )
+        db.execute(f"drop table {temp_table_name}")
 
     return
 
 
 def write_offers(
-    output_file: str,
+    output_file: Path,
     config: FileSettings,
     style_specs: dict[str, None],
     **kwargs,

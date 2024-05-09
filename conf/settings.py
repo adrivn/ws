@@ -19,10 +19,11 @@ cell_address_file = Path(CONF_DIR / "cell_addresses.json")
 sap_mapping_file = Path(CONF_DIR / "sap_columns_mapping.json")
 styles_file = Path(CONF_DIR / "styles.json")
 
+
 @dataclass
 class FileSettings:
-    directory: str
-    output_dir: str
+    directory: Path
+    output_dir: Path
     output_file: str
     sheet_name: str
     strat_sheet: str
@@ -33,10 +34,15 @@ class FileSettings:
     db_schema: str = "ws"
 
     def get_filename(self):
-        return "#" + datetime.datetime.strftime(datetime.datetime.now(), "%Y%m%d") + self.output_file
+        return (
+            "#"
+            + datetime.datetime.strftime(datetime.datetime.now(), "%Y%m%d")
+            + self.output_file
+        )
 
     def get_output_path(self):
-        return ( self.output_dir / self.get_filename() )
+        return self.output_dir / self.get_filename()
+
 
 stockconf = FileSettings(
     DIR_OFFERS,
@@ -64,4 +70,3 @@ pipeconf = FileSettings(
     "Strats",
     6,
 )
-
