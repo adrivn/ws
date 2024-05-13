@@ -6,6 +6,7 @@ $boolUpdate = $true
 
 Write-Host "Fetching updates..."
 & cp $rootPath/conf/superset_config.py $venvPath/superset_config.py
+& cd $rootPath
 & git pull
 
 # Check if virtual environment exists, and creates one if not
