@@ -77,14 +77,31 @@ ws_menu = {
         "Crear / Actualizar fichero ofertas",
         {
             1: (
-                f"Escanear las ofertas de {current_year} y crear fichero",
+                f"Escanear todas las ofertas de {current_year} y crear fichero",
                 blank_runner,
                 {
                     "script": "./update_offers.py",
-                    "other_params": ["--update", f"--{current_year}"],
+                    "other_params": [
+                        "--update",
+                        "--write",
+                        f"--year={current_year}",
+                    ],
                 },
             ),
             2: (
+                f"Escanear sólo las nuevas ofertas de {current_year} y crear fichero",
+                blank_runner,
+                {
+                    "script": "./update_offers.py",
+                    "other_params": [
+                        "--update",
+                        "--refresh",
+                        "--write",
+                        f"--year={current_year}",
+                    ],
+                },
+            ),
+            3: (
                 "Crear nuevo fichero",
                 blank_runner,
                 {"script": "./update_offers.py", "other_params": ["--write"]},
