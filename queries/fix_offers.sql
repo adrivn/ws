@@ -20,7 +20,7 @@ update {table_schema}.{table_name} set commercialdev = string_to_array(regexp_re
 update {table_schema}.{table_name} set jointdev = string_to_array(regexp_replace(jointdev,'[\[\]]', '', 'g'), ',');
 update {table_schema}.{table_name} set offer_id = regexp_replace(trim(offer_id), '[\n\t\W]', '', 'g')[:7] where regexp_matches(offer_id, '[\n\t\W]');
 update {table_schema}.{table_name} set offer_id = NULL where len(offer_id) < 6 or regexp_matches(offer_id, '[a-zA-Z]');
-update {table_schema}.{table_name} set contract_deposit = 0 where contract_deposit = '-';
+update {table_schema}.{table_name} set contract_deposit = '0' where contract_deposit = '-';
 alter table {table_schema}.{table_name} alter column client_description set data type varchar;
 update {table_schema}.{table_name} set client_description = NULL where client_description = 'NOMBRE';
 update {table_schema}.{table_name} set commercialdev = regexp_replace(jointdev, '-', '');
@@ -34,7 +34,7 @@ alter table {table_schema}.{table_name} alter column unique_urs set data type in
 alter table {table_schema}.{table_name} alter column commercialdev set data type int[];
 alter table {table_schema}.{table_name} alter column jointdev set data type int[];
 alter table {table_schema}.{table_name} alter column offer_id set data type int;
-alter table {table_schema}.{table_name} alter column contract_deposit set data type double;
+--alter table {table_schema}.{table_name} alter column contract_deposit set data type double;
 alter table {table_schema}.{table_name} alter column legal_status set data type varchar;
 alter table {table_schema}.{table_name} alter column read_details set data type varchar;
 alter table {table_schema}.{table_name} alter column rollup_y_n set data type varchar;

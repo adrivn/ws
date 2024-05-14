@@ -196,6 +196,7 @@ def create_ddb_table(
             db.execute(
                 f"insert into {table_schema}.{table_name} by name (select * from {temp_table_name})"
             )
+            db.execute(f"drop table {temp_table_name}")
             return
 
         console.print(
