@@ -15,6 +15,7 @@ alter table {table_schema}.{table_name} alter column sap_price set data type var
 alter table {table_schema}.{table_name} alter column contract_deposit set data type varchar;
 update {table_schema}.{table_name} set web_price = NULL where regexp_matches(web_price, '\D');
 update {table_schema}.{table_name} set sap_price = NULL where regexp_matches(sap_price, '\D');
+alter table {table_schema}.{table_name} alter column unique_urs set data type varchar;
 update {table_schema}.{table_name} set unique_urs = string_to_array(regexp_replace(unique_urs,'[\[\]]', '', 'g'), ',');
 update {table_schema}.{table_name} set commercialdev = string_to_array(regexp_replace(commercialdev,'[\[\]]', '', 'g'), ',');
 update {table_schema}.{table_name} set jointdev = string_to_array(regexp_replace(jointdev,'[\[\]]', '', 'g'), ',');

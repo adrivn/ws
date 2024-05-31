@@ -153,14 +153,14 @@ def create_ddb_table(
     insert_instead: bool = False,
 ):
     console.print(f"Creating table into DuckDB file {db_file}...")
+    if not all([table_name, table_schema, db_file]):
+        console.print("input the parameters, I cannot run")
+        return
 
     with duckdb.connect(db_file) as db:
         temp_view_register = f"{table_name}_temp"
         temp_table_name = "tmpoffers_deleteafter"
         db.register(temp_view_register, df)
-        if not all([table_name, query_file]):
-            console.print("table_name and query_file must be specified before running.")
-            return
         db.execute(
             f"create or replace table {temp_table_name} as select * from {temp_view_register}"
         )
